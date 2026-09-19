@@ -1080,6 +1080,9 @@ select {
   .share-btn { padding: 0 14px 0 12px; }
   .share-label { display: none; }
   .share-label-short { display: inline; }
+  /* once sharing, the icon and its live dot say enough, and the name keeps its room */
+  .share-btn.is-sharing { padding: 0 14px; }
+  .share-btn.is-sharing .share-label-short { display: none; }
 
   .stats { gap: var(--space-2); margin: var(--space-2) 0 var(--space-3); }
   .stat { padding: 10px var(--space-2); text-align: center; }

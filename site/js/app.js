@@ -847,6 +847,7 @@ function renderShareButton() {
   const sharing = !!cloud.diary;
   $("share-label").textContent = sharing ? "Shared diary" : "Share with a friend";
   $("share-label-short").textContent = sharing ? "Shared" : "Share";
+  $("share-open").classList.toggle("is-sharing", sharing);
   $("sync-dot").hidden = !sharing;
   $("sync-dot").dataset.status = cloud.status;
   $("share-open").setAttribute("aria-label", sharing
