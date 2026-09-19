@@ -198,6 +198,19 @@ async function pull() {
   }
 }
 
+// Postgres can't store the "null" character, and text read from restaurant
+// websites occasionally carries one; left in, it would stop the sync for good.
+const NUL = String.fromCharCode(0);
+
+function clean(value) {
+  if (typeof value === "string") return value.includes(NUL) ? value.split(NUL).join("") : value;
+  if (Array.isArray(value)) return value.map(clean);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, clean(inner)]));
+  }
+  return value;
+}
+
 let pushing = false;
 
 async function push() {
@@ -234,7 +247,7 @@ async function push() {
         return;
       }
       const item = store.get(entry.id);
-      if (item) rows.push({ ...base, data: item, deleted: false, updated_at: item.updated_at || entry.updatedAt });
+      if (item) rows.push({ ...base, data: clean(item), deleted: false, updated_at: item.updated_at || entry.updatedAt });
     });
     for (let i = 0; i < rows.length; i += 50) {
       const { error } = await sb.from("diary_restaurants")

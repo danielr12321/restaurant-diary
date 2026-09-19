@@ -8,7 +8,7 @@ It runs in any browser, on a computer or a phone (where it can be added to the
 home screen and opens like an app), and two people can share one diary live.
 
 - **Site:** <https://danielr12321.github.io/restaurant-diary/> (GitHub Pages)
-- **Shared data:** a free [Supabase](https://supabase.com) project (the same one as the cocktail app, in tables of its own)
+- **Shared data:** a free [Supabase](https://supabase.com) project (its own project, `bipvhmspflfxzdvbrogi`)
 - **Stack:** plain HTML, CSS and JavaScript modules; no build step
 
 ## Sharing with a friend
@@ -24,7 +24,7 @@ newest edit wins.
 ### Supabase
 
 1. **SQL Editor → New query**: paste `supabase/schema.sql` and run it. It's safe to run again.
-2. **Authentication → Sign In / Providers**: "Allow anonymous sign-ins" must be on (it already is for the cocktail app).
+2. **Authentication → Sign In / Providers**: "Allow anonymous sign-ins" must be on.
 3. **Edge Functions → Deploy a new function → Via Editor**: name it `find-menu`, replace the sample code with
    `supabase/functions/find-menu/index.ts`, and deploy. This is the menu finder: a web page can't read other
    websites itself.

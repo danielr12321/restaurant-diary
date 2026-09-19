@@ -55,9 +55,16 @@ for (const item of restaurants) {
   }
 }
 
+// Postgres can't store the "null" character, which text read from websites sometimes carries.
+const NUL = String.fromCharCode(0);
+const clean = (value) => typeof value === "string" ? value.split(NUL).join("")
+  : Array.isArray(value) ? value.map(clean)
+  : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, clean(v)]))
+  : value;
+
 const now = new Date().toISOString();
 const rows = restaurants.map((item) => ({
-  diary_id: diary.id, item_id: item.id, data: { ...item, updated_at: now },
+  diary_id: diary.id, item_id: item.id, data: clean({ ...item, updated_at: now }),
   deleted: false, updated_at: now, updated_by: userId,
 }));
 for (let i = 0; i < rows.length; i += 50) {

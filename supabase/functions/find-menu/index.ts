@@ -228,17 +228,22 @@ async function fetchPage(url: string, ctx: Context): Promise<Fetched> {
   throw new MenuError("The website redirected too many times.");
 }
 
+// Some sites carry stray "null" characters in their text; the diary's database can't store them.
+const NUL = String.fromCharCode(0);
+
 function decodeBody(body: Uint8Array, contentType: string): string {
   let charset = (/charset=([\w-]+)/i.exec(contentType || "") || [])[1];
   if (!charset) {
     const head = new TextDecoder("latin1").decode(body.subarray(0, 4096));
     charset = (/<meta[^>]+charset=["']?([\w-]+)/i.exec(head) || [])[1] || "utf-8";
   }
+  let text: string;
   try {
-    return new TextDecoder(charset).decode(body);
+    text = new TextDecoder(charset).decode(body);
   } catch {
-    return new TextDecoder("utf-8").decode(body);
+    text = new TextDecoder("utf-8").decode(body);
   }
+  return text.split(NUL).join("");
 }
 
 // ---------- reading a page ----------

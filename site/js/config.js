@@ -3,11 +3,11 @@
 // The published site: invite messages point here even from a local copy.
 export const SITE_URL = "https://danielr12321.github.io/restaurant-diary/";
 
-// The shared diary's database (the same free Supabase project as the cocktail app,
-// in tables of its own). The publishable key is made to ship inside apps; the
-// database rules in supabase/schema.sql are what protect the data.
-export const SUPABASE_URL = "https://islsgpinvajfovpsdrfe.supabase.co";
-export const SUPABASE_KEY = "sb_publishable_PlMG7J59oZ0mnezNGrg86Q_Mh9_qGZ-";
+// The shared diary's database: the diary's own free Supabase project. The
+// publishable key is made to ship inside apps; the database rules in
+// supabase/schema.sql are what protect the data.
+export const SUPABASE_URL = "https://bipvhmspflfxzdvbrogi.supabase.co";
+export const SUPABASE_KEY = "sb_publishable_a8370u4gTgisJFWuny5-6g_Ut3PrlAL";
 
 export const IS_LOCAL = ["localhost", "127.0.0.1"].includes(location.hostname);
 
