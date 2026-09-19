@@ -1,0 +1,17 @@
+{
+  "name": "Restaurant Diary",
+  "short_name": "Diary",
+  "description": "Places to try, and places you've loved. A restaurant diary you can share with a friend.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FDF8F4",
+  "theme_color": "#FDF8F4",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

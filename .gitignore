@@ -1,0 +1,12 @@
+# The old local app and its data (restaurants, photos, the Google key) stay on this computer.
+/restaurant-diary/
+# Not part of the diary
+/game.py
+/package.json
+/package-lock.json
+node_modules/
+.claude/
+__pycache__/
+*.pyc
+Thumbs.db
+.DS_Store

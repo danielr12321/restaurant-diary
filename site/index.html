@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#FDF8F4">
+<meta name="description" content="Places to try, and places you've loved. A restaurant diary you can share with a friend.">
+<title>Restaurant Diary</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<!-- iPhone "Add to Home Screen": its own icon and name (iOS ignores the manifest icons) -->
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="Diary">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Karla:wght@300;400;500;600;700&family=Playfair+Display+SC:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script src="vendor/supabase.js" defer></script>
+<script type="module" src="js/app.js"></script>
+</head>
+<body>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 4.4-8 12-8 12s-8-7.6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.2-5.4-2.9-5.4 2.9 1-6.2L3.2 9.5l6.1-.9L12 3Z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m20 6-11 11-5-5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z"/></symbol>
+  <symbol id="i-utensils" viewBox="0 0 24 24"><path d="M3 3v7a3 3 0 0 0 6 0V3M6 10v11M17 3c-1.7 1.2-2.5 3.2-2.5 6 0 2 .5 3 2.5 3.2V21"/></symbol>
+  <symbol id="i-chef" viewBox="0 0 24 24"><path d="M6 18h12M6 14a4 4 0 0 1-1-7.9A4 4 0 0 1 12 4a4 4 0 0 1 7 2.1A4 4 0 0 1 18 14Z"/><path d="M7 14v4M17 14v4"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="m9 3-6 3v15l6-3 6 3 6-3V3l-6 3-6-3ZM9 3v15M15 6v15"/></symbol>
+  <symbol id="i-crosshair" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5v14ZM4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5M8 7h8M8 11h6"/></symbol>
+  <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></symbol>
+  <symbol id="i-cloud-off" viewBox="0 0 24 24"><path d="m2 2 20 20M5.78 5.78A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.31-.2M21.5 15.2A4.5 4.5 0 0 0 17.5 10h-1.79A7 7 0 0 0 10.2 5.1"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></symbol>
+  <symbol id="i-smartphone" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></symbol>
+</svg>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><svg class="icon"><use href="#i-chef"/></svg></span>
+      <div>
+        <h1>Restaurant Diary</h1>
+        <p class="brand-sub">Places I want to try, and places I've loved</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="share-btn" id="share-open" aria-haspopup="dialog">
+        <svg class="icon" aria-hidden="true"><use href="#i-users"/></svg>
+        <span class="share-label" id="share-label">Share with a friend</span>
+        <span class="share-label-short" id="share-label-short" aria-hidden="true">Share</span>
+        <span class="sync-dot" id="sync-dot" hidden></span>
+      </button>
+      <button type="button" class="btn-icon" id="settings-open" title="Settings" aria-label="Settings"
+              aria-haspopup="dialog">
+        <svg class="icon"><use href="#i-gear"/></svg>
+      </button>
+      <button type="button" class="btn btn-primary header-add" id="open-add">
+        <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>
+        Add restaurant
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+  <section class="stats" id="stats" aria-label="Summary"></section>
+  <section class="usage usage-page" id="google-usage" aria-label="Google Maps usage this month" hidden></section>
+
+  <div class="toolbar">
+    <div class="tabs" role="tablist" aria-label="Restaurant lists">
+      <button type="button" class="tab is-active" role="tab" aria-selected="true" data-tab="wishlist" id="tab-wishlist">
+        <svg class="icon" aria-hidden="true"><use href="#i-bookmark"/></svg>
+        Want to go <span class="tab-count" data-count="wishlist">0</span>
+      </button>
+      <button type="button" class="tab" role="tab" aria-selected="false" data-tab="visited" id="tab-visited">
+        <svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>
+        Been there <span class="tab-count" data-count="visited">0</span>
+      </button>
+    </div>
+
+    <div class="view-toggle" role="group" aria-label="View">
+      <button type="button" class="view-btn is-active" data-view="list" aria-pressed="true">
+        <svg class="icon" aria-hidden="true"><use href="#i-list"/></svg> List
+      </button>
+      <button type="button" class="view-btn" data-view="map" aria-pressed="false">
+        <svg class="icon" aria-hidden="true"><use href="#i-map"/></svg> Map
+      </button>
+    </div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <div class="field-icon filter-search">
+      <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+      <label class="sr-only" for="filter">Search your list</label>
+      <input type="search" id="filter" placeholder="Search your list" autocomplete="off" enterkeyhint="search">
+    </div>
+
+    <!-- On phones the List/Map switch sits next to the search field -->
+    <div class="view-toggle view-toggle-compact" role="group" aria-label="View">
+      <button type="button" class="view-btn is-active" data-view="list" aria-pressed="true" aria-label="List">
+        <svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>
+      </button>
+      <button type="button" class="view-btn" data-view="map" aria-pressed="false" aria-label="Map">
+        <svg class="icon" aria-hidden="true"><use href="#i-map"/></svg>
+      </button>
+    </div>
+
+    <div class="filter-row">
+      <button type="button" class="chip filters-toggle" id="filters-toggle"
+              aria-expanded="false" aria-controls="filter-panel">
+        <svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg>
+        Filters <span class="chip-count" id="filters-count" hidden></span>
+      </button>
+
+      <div class="filter-panel" id="filter-panel" role="group" aria-label="Filters">
+        <button type="button" class="chip" id="open-now" aria-pressed="false"
+                title="Only show places that are open at this moment">
+          <svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>
+          Open now
+        </button>
+
+        <div class="chip-pair">
+          <button type="button" class="chip" id="near-me" aria-pressed="false">
+            <svg class="icon" aria-hidden="true"><use href="#i-crosshair"/></svg>
+            Near me
+          </button>
+          <label class="chip chip-select" id="radius-wrap" hidden>
+            <span class="sr-only">Distance from you</span>
+            <span class="chip-value" data-for="radius" aria-hidden="true"></span>
+            <select id="radius">
+              <option value="1">1 km</option>
+              <option value="2">2 km</option>
+              <option value="5" selected>5 km</option>
+              <option value="10">10 km</option>
+              <option value="25">25 km</option>
+              <option value="0">Any distance</option>
+            </select>
+            <svg class="icon chip-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+          </label>
+        </div>
+
+        <label class="chip chip-select" id="cuisine-wrap">
+          <svg class="icon" aria-hidden="true"><use href="#i-utensils"/></svg>
+          <span class="sr-only">Cuisine</span>
+          <span class="chip-value" data-for="cuisine-filter" aria-hidden="true"></span>
+          <select id="cuisine-filter"><option value="">All cuisines</option></select>
+          <svg class="icon chip-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+        </label>
+
+        <label class="chip chip-select" id="city-wrap">
+          <svg class="icon" aria-hidden="true"><use href="#i-pin"/></svg>
+          <span class="sr-only">City</span>
+          <span class="chip-value" data-for="city-filter" aria-hidden="true"></span>
+          <select id="city-filter"><option value="">All cities</option></select>
+          <svg class="icon chip-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+        </label>
+
+        <button type="button" class="chip chip-clear" id="clear-filters" hidden>
+          <svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>
+          Clear
+        </button>
+      </div>
+
+      <label class="chip chip-select sort-chip">
+        <svg class="icon" aria-hidden="true"><use href="#i-sort"/></svg>
+        <span class="sr-only">Sort by</span>
+        <span class="chip-value" data-for="sort" aria-hidden="true"></span>
+        <select id="sort">
+          <option value="added">Recently added</option>
+          <option value="favorite">Favorites first</option>
+          <option value="name">Name A–Z</option>
+          <option value="city">City</option>
+          <option value="rating">Top rated</option>
+          <option value="price">Cheapest first</option>
+          <option value="distance" disabled>Closest (use Near me)</option>
+        </select>
+        <svg class="icon chip-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+      </label>
+    </div>
+  </div>
+
+  <p class="list-note" id="list-note" role="status" aria-live="polite" hidden></p>
+
+  <div id="list" class="grid" role="tabpanel" aria-labelledby="tab-wishlist"></div>
+  <div id="map" hidden>
+    <div id="map-canvas"></div>
+    <div class="map-fallback" id="map-message" role="status" hidden></div>
+  </div>
+</main>
+
+<!-- Phones: the two lists and Add, under the thumb -->
+<nav class="bottom-nav" aria-label="Lists">
+  <button type="button" class="bottom-tab is-active" data-tab="wishlist" aria-current="page">
+    <svg class="icon" aria-hidden="true"><use href="#i-bookmark"/></svg>
+    <span>Want to go</span>
+    <span class="bottom-count" data-count="wishlist">0</span>
+  </button>
+  <button type="button" class="bottom-add" id="bottom-add" aria-label="Add a restaurant">
+    <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>
+  </button>
+  <button type="button" class="bottom-tab" data-tab="visited">
+    <svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>
+    <span>Been there</span>
+    <span class="bottom-count" data-count="visited">0</span>
+  </button>
+</nav>
+
+<!-- Add restaurant -->
+<div class="modal-backdrop" id="add-modal" hidden>
+  <div class="modal modal-tall" role="dialog" aria-modal="true" aria-labelledby="add-title">
+    <div class="modal-head">
+      <h2 id="add-title">Add a restaurant</h2>
+      <button type="button" class="btn-icon" id="close-add" aria-label="Close">
+        <svg class="icon"><use href="#i-x"/></svg>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <div id="step-search">
+        <p class="hint">Pick a country, then type the name — add the city if it's a common one.
+          The address, hours and cuisine are filled in for you.</p>
+        <div class="search-row">
+          <label class="chip chip-select country-chip" id="country-wrap" title="Only search in this country">
+            <svg class="icon" aria-hidden="true"><use href="#i-globe"/></svg>
+            <span class="sr-only">Country to search in</span>
+            <span class="chip-value" data-for="search-country" aria-hidden="true"></span>
+            <select id="search-country"><option value="">Any country</option></select>
+            <svg class="icon chip-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+          </label>
+          <div class="field-icon field-lg">
+            <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>
+            <label class="sr-only" for="place-search">Restaurant name</label>
+            <input type="text" id="place-search" placeholder="e.g. Miznon Tel Aviv" autocomplete="off"
+                   enterkeyhint="search" role="combobox" aria-expanded="false" aria-controls="results"
+                   aria-autocomplete="list">
+            <span class="spinner" id="search-spinner" hidden></span>
+          </div>
+        </div>
+        <p class="search-notice" id="search-notice" role="status" hidden></p>
+        <ul class="results" id="results" role="listbox" aria-label="Search results"></ul>
+        <p class="search-credit" id="search-credit" hidden>Results from Google Maps</p>
+        <div class="results-empty" id="results-empty" hidden></div>
+      </div>
+
+      <div id="step-confirm" hidden>
+        <div class="dup-warning" id="dup-warning" role="alert" hidden></div>
+        <div class="preview" id="preview"></div>
+
+        <fieldset class="choice">
+          <legend>Have you been?</legend>
+          <div class="choice-row">
+            <label class="choice-card">
+              <input type="radio" name="status" value="wishlist" checked>
+              <span class="choice-inner">
+                <svg class="icon" aria-hidden="true"><use href="#i-bookmark"/></svg>
+                <span class="choice-label">Want to go</span>
+                <span class="choice-sub">Save it to the wishlist</span>
+              </span>
+            </label>
+            <label class="choice-card">
+              <input type="radio" name="status" value="visited">
+              <span class="choice-inner">
+                <svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>
+                <span class="choice-label">Been there</span>
+                <span class="choice-sub">Add a rating and notes</span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="field" id="price-field">
+          <span class="field-label" id="price-label">How pricey is it?</span>
+          <div class="shekels" id="price-input" role="radiogroup" aria-labelledby="price-label"></div>
+          <span class="field-help" id="price-help">Optional — tap again to clear.</span>
+        </div>
+
+        <div id="review-block" hidden>
+          <div class="field">
+            <span class="field-label" id="rating-label">Your rating</span>
+            <div class="stars" id="rating-input" role="radiogroup" aria-labelledby="rating-label"></div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="dishes">Dishes worth ordering</label>
+            <input type="text" id="dishes" placeholder="Pita with lamb, cauliflower — separate with commas">
+            <span class="field-help">Optional — what you'd order again next time.</span>
+          </div>
+          <div class="field">
+            <label class="field-label" for="review">Short review</label>
+            <textarea id="review" rows="3" placeholder="What made it memorable?"></textarea>
+          </div>
+          <div class="field">
+            <span class="field-label">Photos</span>
+            <div class="photo-grid" id="draft-photos"></div>
+            <button type="button" class="btn btn-ghost btn-sm" id="draft-photos-btn">
+              <svg class="icon" aria-hidden="true"><use href="#i-camera"/></svg> Add photos
+            </button>
+            <input type="file" id="draft-photos-input" accept="image/*" multiple hidden>
+            <span class="field-help">Optional. Resized before saving, so large phone photos are fine.</span>
+          </div>
+        </div>
+
+        <div id="wish-block">
+          <div class="field">
+            <label class="field-label" for="wish-note">Why this one?</label>
+            <input type="text" id="wish-note" placeholder="Recommended by Maya — go for the tasting menu">
+            <span class="field-help">Optional.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-foot" id="add-foot" hidden>
+      <button type="button" class="btn btn-ghost" id="back-search">Back to search</button>
+      <button type="button" class="btn btn-primary" id="save-place">Save restaurant</button>
+    </div>
+  </div>
+</div>
+
+<!-- Review / edit -->
+<div class="modal-backdrop" id="review-modal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="review-title">
+    <div class="modal-head">
+      <h2 id="review-title">How was it?</h2>
+      <button type="button" class="btn-icon" id="close-review" aria-label="Close">
+        <svg class="icon"><use href="#i-x"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="review-for" id="review-for"></p>
+      <div class="field">
+        <span class="field-label" id="edit-rating-label">Your rating</span>
+        <div class="stars" id="edit-rating" role="radiogroup" aria-labelledby="edit-rating-label"></div>
+      </div>
+      <div class="field">
+        <span class="field-label" id="edit-price-label">How pricey is it?</span>
+        <div class="shekels" id="edit-price" role="radiogroup" aria-labelledby="edit-price-label"></div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="edit-dishes">Dishes worth ordering</label>
+        <input type="text" id="edit-dishes" placeholder="Separate with commas">
+      </div>
+      <div class="field">
+        <label class="field-label" for="edit-review">Short review</label>
+        <textarea id="edit-review" rows="3"></textarea>
+      </div>
+      <div class="field">
+        <span class="field-label">Photos</span>
+        <div class="photo-grid" id="edit-photos"></div>
+        <button type="button" class="btn btn-ghost btn-sm" id="edit-photos-btn">
+          <svg class="icon" aria-hidden="true"><use href="#i-camera"/></svg> Add photos
+        </button>
+        <input type="file" id="edit-photos-input" accept="image/*" multiple hidden>
+        <span class="field-help">Photos save as soon as you add them.</span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-ghost" id="cancel-review">Cancel</button>
+      <button type="button" class="btn btn-primary" id="save-review">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Menu -->
+<div class="modal-backdrop" id="menu-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="menu-title">
+    <div class="modal-head">
+      <h2 id="menu-title">Menu</h2>
+      <button type="button" class="btn-icon" id="close-menu" aria-label="Close">
+        <svg class="icon"><use href="#i-x"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div id="menu-body" aria-live="polite"></div>
+      <form class="menu-paste" id="menu-paste">
+        <label class="field-label" for="menu-url">Have the menu link?</label>
+        <div class="menu-paste-row">
+          <input type="text" id="menu-url" inputmode="url" autocomplete="off" enterkeyhint="go"
+                 placeholder="Paste a menu page, PDF, or the restaurant's website">
+          <button type="submit" class="btn btn-ghost btn-sm" id="menu-url-btn">Use link</button>
+        </div>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-ghost" id="menu-clear" hidden>Remove saved menu</button>
+      <button type="button" class="btn btn-ghost" id="menu-retry">
+        <svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg> Search website again
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Share with a friend -->
+<div class="modal-backdrop" id="share-modal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="share-title">
+    <div class="modal-head">
+      <h2 id="share-title">Share with a friend</h2>
+      <button type="button" class="btn-icon" id="close-share" aria-label="Close">
+        <svg class="icon"><use href="#i-x"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="share-body"></div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div class="modal-backdrop" id="settings-modal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="modal-head">
+      <h2 id="settings-title">Settings</h2>
+      <button type="button" class="btn-icon" id="close-settings" aria-label="Close">
+        <svg class="icon"><use href="#i-x"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <section class="settings-section" aria-labelledby="google-title">
+        <h3 class="settings-heading" id="google-title">Google Maps</h3>
+        <div class="google-state" id="google-state" role="status" hidden></div>
+        <p class="hint" id="google-hint">Google Maps gives better restaurant search and the map. Paste an API key
+          from the Google Cloud console. It stops itself before it could cost money.</p>
+        <form id="google-form" class="google-form">
+          <div class="field">
+            <label class="field-label" for="google-key" id="google-key-label">API key</label>
+            <input type="text" id="google-key" autocomplete="off" spellcheck="false" placeholder="AIza…">
+            <span class="field-help">Turn on "Maps JavaScript API" and "Places API (New)" for the key, and
+              restrict it to this website: <code id="google-site"></code></span>
+          </div>
+          <p class="menu-error" id="google-error" role="alert" hidden></p>
+          <div class="settings-actions">
+            <button type="button" class="btn btn-ghost btn-sm" id="google-remove" hidden>Disconnect</button>
+            <button type="submit" class="btn btn-primary btn-sm" id="google-save">Save key</button>
+          </div>
+        </form>
+        <div class="usage usage-sheet" id="settings-usage" hidden></div>
+      </section>
+
+      <section class="settings-section" aria-labelledby="data-title">
+        <h3 class="settings-heading" id="data-title">Your data</h3>
+        <p class="hint">A copy of every restaurant, rating and note as one file — to keep, or to move into another
+          diary.</p>
+        <div class="settings-actions settings-actions-start">
+          <button type="button" class="btn btn-ghost btn-sm" id="export-btn">
+            <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg> Save a copy
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm" id="import-btn">
+            <svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg> Add from a file
+          </button>
+          <input type="file" id="import-file" accept="application/json,.json" hidden>
+        </div>
+      </section>
+
+      <section class="settings-section" id="install-section" aria-labelledby="install-title">
+        <h3 class="settings-heading" id="install-title">On your phone</h3>
+        <p class="hint" id="install-hint">Open this page on your phone and add it to the home screen: it opens like an
+          app, full screen, and works without a connection.</p>
+        <button type="button" class="btn btn-ghost btn-sm" id="install-btn" hidden>
+          <svg class="icon" aria-hidden="true"><use href="#i-smartphone"/></svg> Install the app
+        </button>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- Photo viewer -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photo viewer" hidden>
+  <button type="button" class="lightbox-btn lightbox-close" id="lightbox-close" aria-label="Close photo viewer">
+    <svg class="icon"><use href="#i-x"/></svg>
+  </button>
+  <button type="button" class="lightbox-btn lightbox-prev" id="lightbox-prev" aria-label="Previous photo">
+    <svg class="icon"><use href="#i-chevron-left"/></svg>
+  </button>
+  <figure class="lightbox-figure">
+    <img id="lightbox-img" alt="" crossorigin="anonymous">
+    <figcaption id="lightbox-caption"></figcaption>
+  </figure>
+  <button type="button" class="lightbox-btn lightbox-next" id="lightbox-next" aria-label="Next photo">
+    <svg class="icon"><use href="#i-chevron-right"/></svg>
+  </button>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+</body>
+</html>
