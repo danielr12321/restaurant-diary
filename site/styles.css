@@ -760,6 +760,10 @@ select {
 }
 .empty-mark .icon { width: 28px; height: 28px; }
 .empty h3 { font-size: 20px; }
+.welcome .welcome-join { width: 100%; max-width: 380px; }
+.welcome .welcome-error { margin: 0; }
+.welcome-or { font-size: 14px; }
+.welcome-or .link-btn { font-size: 14px; }
 .empty p { margin: 0; max-width: 40ch; color: var(--color-muted-foreground); }
 
 /* ---------- Modal ---------- */

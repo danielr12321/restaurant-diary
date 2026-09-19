@@ -513,7 +513,26 @@ function cardMarkup(item) {
   return html;
 }
 
+// A browser that has never joined starts empty; the diary may well be waiting
+// on another device, so the first thing offered is its code.
+function welcomeMarkup() {
+  return '<div class="empty welcome">' +
+    '<div class="empty-mark">' + icon("users") + "</div>" +
+    "<h3>Is your diary on another device?</h3>" +
+    "<p>Type its code to bring it here. Your restaurants, notes and photos then stay in step on every " +
+    "device. You'll find the code under Share on a device that already has the diary.</p>" +
+    '<form class="share-join welcome-join" id="welcome-join">' +
+    '<label class="sr-only" for="welcome-code">Diary code</label>' +
+    '<input id="welcome-code" class="code-input" autocomplete="off" autocapitalize="characters" ' +
+    'spellcheck="false" maxlength="12" placeholder="ABCD1234" enterkeyhint="go">' +
+    '<button type="submit" class="btn btn-primary">Join</button></form>' +
+    '<p class="menu-error welcome-error" id="welcome-error" role="alert" hidden></p>' +
+    '<p class="welcome-or">Starting a new diary? <button type="button" class="link-btn" data-act="add">' +
+    "Add your first restaurant</button></p></div>";
+}
+
 function emptyMarkup() {
+  if (!state.items.length && !cloud.diary) return welcomeMarkup();
   const nearby = state.origin && state.radius > 0;
   if (state.openNow) {
     const withoutHours = state.items
@@ -1047,6 +1066,8 @@ function render(animate) {
     '<div class="stat-label"><span class="stat-long">Average rating</span>' +
     '<span class="stat-short">Avg rating</span></div></div>';
 
+  // Three zeros say nothing on a first visit, and push the "join with a code" card down.
+  $("stats").hidden = !state.items.length && !cloud.diary;
   document.querySelectorAll('[data-count="wishlist"]').forEach((el) => { el.textContent = wishlist.length; });
   document.querySelectorAll('[data-count="visited"]').forEach((el) => { el.textContent = visited.length; });
 
@@ -2248,6 +2269,37 @@ $("list").addEventListener("click", (event) => {
   else if (action === "favorite") toggleFavorite(trigger.dataset.id);
   else if (action === "photo") openLightbox(trigger.dataset.id, Number(trigger.dataset.index));
   else if (action === "menu") openMenu(trigger.dataset.id);
+});
+
+/* joining straight from the empty first screen */
+$("list").addEventListener("submit", async (event) => {
+  if (event.target.id !== "welcome-join") return;
+  event.preventDefault();
+  const input = $("welcome-code");
+  const code = input.value.trim();
+  if (code.length < 4) {
+    input.focus();
+    return;
+  }
+  const button = event.target.querySelector("button");
+  button.disabled = true;
+  button.innerHTML = spinnerMarkup() + "Joining…";
+  try {
+    await joinDiary(code, { googleKey: readSetting("google-key", "") });
+    applyGoogleStatus();
+    render(true);
+    toast("You're in. The shared diary is on this device now.");
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = "Join";
+    $("welcome-error").textContent = err.message;
+    $("welcome-error").hidden = false;
+  }
+});
+$("list").addEventListener("input", (event) => {
+  if (event.target.id === "welcome-code") {
+    event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  }
 });
 
 /* photos in the add dialog wait in memory until the restaurant exists */
