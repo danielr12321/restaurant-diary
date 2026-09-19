@@ -2453,7 +2453,7 @@ $("import-file").addEventListener("change", async (event) => {
   }
 
   // Places already in the diary (same name and address) are skipped.
-  const key = (r) => String(r.name || "").toLowerCase() + " " + String(r.address || "").toLowerCase();
+  const key = (r) => JSON.stringify([String(r.name || "").toLowerCase(), String(r.address || "").toLowerCase()]);
   const existing = new Set(store.items.map(key));
   let added = 0;
   let skipped = 0;

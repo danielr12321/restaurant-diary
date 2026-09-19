@@ -67,7 +67,7 @@ const BARE_PRICE_RE = /^(.{3,70}?)\s*(?:\.{2,}|…+|[-–—|:])?\s*(\d{2,3})$/;
 // A price alone on its line: "58", "₪58", "58 ₪", "28 ליח'" (per piece), "64 למנה".
 const STANDALONE_PRICE_RE =
   /^(?:₪\s?)?(\d{2,3}(?:[.,]\d{1,2})?)\s?(?:₪|ש["״']?ח|nis|ליח["״'׳’]?|ל?יחידה|למנה|לאדם)?$/i;
-const LETTERS_RE = /[A-Za-z֐-׿À-ɏ]{2,}/;
+const LETTERS_RE = /[A-Za-z\u0590-\u05FF\u00C0-\u024F]{2,}/;
 // Word edges that also count Hebrew letters as part of a word.
 const B = String.raw`(?<![\p{L}\p{N}_])`;
 const E = String.raw`(?![\p{L}\p{N}_])`;
@@ -244,14 +244,14 @@ function decodeBody(body: Uint8Array, contentType: string): string {
 // ---------- reading a page ----------
 
 const ENTITIES: Record<string, string> = {
-  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", ndash: "–", mdash: "—",
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: "\u00A0", ndash: "–", mdash: "—",
   hellip: "…", lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”", sbquo: "‚", bdquo: "„",
-  laquo: "«", raquo: "»", middot: "·", bull: "•", shy: "­", euro: "€", pound: "£",
+  laquo: "«", raquo: "»", middot: "·", bull: "•", shy: "\u00AD", euro: "€", pound: "£",
   cent: "¢", yen: "¥", copy: "©", reg: "®", trade: "™", times: "×", divide: "÷", deg: "°",
   frac12: "½", frac14: "¼", frac34: "¾", eacute: "é", egrave: "è", ecirc: "ê", agrave: "à",
   aacute: "á", acirc: "â", auml: "ä", ouml: "ö", uuml: "ü", oacute: "ó", iacute: "í",
-  uacute: "ú", ntilde: "ñ", ccedil: "ç", szlig: "ß", zwj: "‍", zwnj: "‌",
-  lrm: "‎", rlm: "‏", ensp: " ", emsp: " ", thinsp: " ",
+  uacute: "ú", ntilde: "ñ", ccedil: "ç", szlig: "ß", zwj: "\u200D", zwnj: "\u200C",
+  lrm: "\u200E", rlm: "\u200F", ensp: "\u2002", emsp: "\u2003", thinsp: "\u2009",
 };
 
 function unescapeHtml(text: string): string {
@@ -259,11 +259,11 @@ function unescapeHtml(text: string): string {
   return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z][a-z0-9]*);?/gi, (whole, ref: string) => {
     if (ref[0] === "#") {
       const code = ref[1] === "x" || ref[1] === "X" ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
-      if (!(code > 0 && code <= 0x10ffff)) return "�";
+      if (!(code > 0 && code <= 0x10ffff)) return "\uFFFD";
       try {
         return String.fromCodePoint(code);
       } catch {
-        return "�";
+        return "\uFFFD";
       }
     }
     const named = ENTITIES[ref] ?? ENTITIES[ref.toLowerCase()];
@@ -727,7 +727,7 @@ function dedupe(items: Dish[]): Dish[] {
   const seen = new Set<string>();
   const out: Dish[] = [];
   for (const item of items) {
-    const key = item.name.toLowerCase() + " " + item.price;
+    const key = JSON.stringify([item.name.toLowerCase(), item.price]);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(item);
