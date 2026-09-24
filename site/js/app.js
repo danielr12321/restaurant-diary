@@ -18,9 +18,19 @@ import { createMapView } from "./map.js";
 
 const DAY_KEYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
+const PHONE = window.matchMedia("(max-width: 720px)");
+
+// Phones open on the simple list, wide screens on cards, unless this device
+// was last left in the other one. The map is never the view a visit starts in.
+function startingView() {
+  const saved = readSetting("view", "");
+  if (saved === "rows" || saved === "cards") return saved;
+  return PHONE.matches ? "rows" : "cards";
+}
+
 const state = {
   tab: "wishlist",
-  view: "list",
+  view: startingView(),
   filter: "",
   cuisine: "",
   city: "",
@@ -36,6 +46,7 @@ const state = {
   editRating: 0,
   draftPrice: 0,
   editPrice: 0,
+  detailsPrice: 0,
   activeResult: -1,
   results: [],
   google: null,
@@ -440,57 +451,48 @@ function toggleFavorite(id) {
 
 /* ---------- cards ---------- */
 
-function cardMarkup(item) {
-  const initial = (item.name || "?").trim().charAt(0).toUpperCase();
-  const cuisine = prettyCuisine(item.cuisine);
-  const dishes = Array.isArray(item.dishes) ? item.dishes.filter(Boolean) : [];
-  const visited = item.status === "visited";
-
-  let html = '<article class="card' + (item.favorite ? " is-favorite" : "") +
-    '" data-card-id="' + esc(item.id) + '">';
-  html += '<div class="card-top">';
-  html += '<div class="card-mark" aria-hidden="true">' + esc(initial) + "</div>";
-  html += '<div class="card-title-group"><h3>' + esc(item.name) + "</h3>";
-  if (item.local_name) html += '<div class="card-local">' + esc(item.local_name) + "</div>";
-  const tagline = [];
-  if (cuisine) tagline.push('<span class="card-cuisine">' + esc(cuisine) + "</span>");
-  if (item.price) tagline.push(priceStatic(item.price));
-  if (tagline.length) html += '<div class="card-tagline">' + tagline.join("") + "</div>";
-  html += "</div>" + favoriteButtonMarkup(item) + "</div>";
-
+// The address, hours, menu and distance, shared by both layouts.
+function detailsMarkup(item) {
   const km = distanceKm(item);
-  html += '<div class="card-meta">' + metaMarkup(item, true);
+  let html = '<div class="card-meta">' + metaMarkup(item, true);
   if (km !== null) {
     html += '<div class="meta-row">' + icon("crosshair") +
       "<span>" + esc(formatDistance(km)) + "</span></div>";
   }
-  html += menuRowMarkup(item);
-  html += "</div>";
+  return html + menuRowMarkup(item) + "</div>";
+}
 
-  html += cardPhotosMarkup(item);
-
-  if (visited && (item.rating || item.review || dishes.length)) {
-    html += '<div class="card-review">';
-    if (item.rating) html += starsStatic(item.rating);
-    if (item.review) html += '<p class="review-text">' + esc(item.review) + "</p>";
-    if (dishes.length) {
-      html += '<div class="dishes">' +
-        dishes.map((d) => '<span class="dish-chip">' + esc(d) + "</span>").join("") + "</div>";
-    }
-    html += "</div>";
-  } else if (!visited && item.wish_note) {
-    html += '<div class="card-review"><p class="review-text">' + esc(item.wish_note) + "</p></div>";
+function notesMarkup(item) {
+  const dishes = Array.isArray(item.dishes) ? item.dishes.filter(Boolean) : [];
+  if (item.status !== "visited") {
+    return item.wish_note ? '<div class="card-review"><p class="review-text">' +
+      esc(item.wish_note) + "</p></div>" : "";
   }
+  if (!item.rating && !item.review && !dishes.length) return "";
+  let html = '<div class="card-review">';
+  if (item.rating) html += starsStatic(item.rating);
+  if (item.review) html += '<p class="review-text">' + esc(item.review) + "</p>";
+  if (dishes.length) {
+    html += '<div class="dishes">' +
+      dishes.map((d) => '<span class="dish-chip">' + esc(d) + "</span>").join("") + "</div>";
+  }
+  return html + "</div>";
+}
 
-  html += '<div class="card-actions">';
+function actionsMarkup(item) {
+  const visited = item.status === "visited";
+  let html = '<div class="card-actions">';
   if (visited) {
     html += '<button type="button" class="btn btn-ghost btn-sm" data-act="edit" data-id="' + esc(item.id) + '">' +
-      icon("edit") + "Edit notes</button>";
+      icon("star") + "Rating & notes</button>";
   } else {
     html += '<button type="button" class="btn btn-primary btn-sm" data-act="visit" data-id="' + esc(item.id) + '">' +
       icon("check") + "I've been here</button>";
   }
   html += '<span class="spacer"></span>';
+  html += '<button type="button" class="btn-icon" data-act="details" data-id="' + esc(item.id) +
+    '" title="Edit details" aria-label="Edit the details of ' + esc(item.name) + '">' + icon("edit") + "</button>";
+
   let maps = null;
   if (item.google_place_id) {
     maps = safeUrl(item.google_maps_uri) ||
@@ -509,8 +511,88 @@ function cardMarkup(item) {
   }
   html += '<button type="button" class="btn-icon danger" data-act="delete" data-id="' + esc(item.id) +
     '" title="Remove" aria-label="Remove ' + esc(item.name) + '">' + icon("trash") + "</button>";
-  html += "</div></article>";
-  return html;
+  return html + "</div>";
+}
+
+function cardMarkup(item) {
+  const initial = (item.name || "?").trim().charAt(0).toUpperCase();
+  const cuisine = prettyCuisine(item.cuisine);
+
+  let html = '<article class="card' + (item.favorite ? " is-favorite" : "") +
+    '" data-card-id="' + esc(item.id) + '">';
+  html += '<div class="card-top">';
+  html += '<div class="card-mark" aria-hidden="true">' + esc(initial) + "</div>";
+  html += '<div class="card-title-group"><h3>' + esc(item.name) + "</h3>";
+  if (item.local_name) html += '<div class="card-local">' + esc(item.local_name) + "</div>";
+  const tagline = [];
+  if (cuisine) tagline.push('<span class="card-cuisine">' + esc(cuisine) + "</span>");
+  if (item.price) tagline.push(priceStatic(item.price));
+  if (tagline.length) html += '<div class="card-tagline">' + tagline.join("") + "</div>";
+  html += "</div>" + favoriteButtonMarkup(item) + "</div>";
+
+  html += detailsMarkup(item);
+  html += cardPhotosMarkup(item);
+  html += notesMarkup(item);
+  html += actionsMarkup(item);
+  return html + "</article>";
+}
+
+/* ---------- the simple list ----------
+   One line each, so a long diary can be read at a glance. Tapping a line opens
+   the same details the card shows. Which lines are open is remembered while the
+   page is open, so a redraw doesn't fold them back up. */
+
+const openRows = new Set();
+
+function rowMarkup(item) {
+  const open = openRows.has(item.id);
+  const cuisine = prettyCuisine(item.cuisine);
+  const nowOpen = openNow(parseOpeningHours(item.opening_hours), new Date());
+  const km = distanceKm(item);
+
+  const bits = [];
+  if (item.rating) bits.push('<span class="row-rating">' + icon("star", "on") + item.rating + "</span>");
+  if (cuisine) bits.push('<span class="row-cuisine">' + esc(cuisine) + "</span>");
+  if (item.price) bits.push(priceStatic(item.price));
+  if (item.city) bits.push(esc(item.city));
+  if (km !== null) bits.push(esc(formatDistance(km)));
+
+  let html = '<li class="row' + (item.favorite ? " is-favorite" : "") + (open ? " is-open" : "") +
+    '" data-card-id="' + esc(item.id) + '">';
+  html += '<div class="row-line">';
+  html += '<button type="button" class="row-main" data-act="expand" data-id="' + esc(item.id) +
+    '" aria-expanded="' + (open ? "true" : "false") + '">';
+  html += '<span class="row-dot' + (nowOpen === true ? " is-open-now" : nowOpen === false ? " is-shut" : "") +
+    '" aria-hidden="true"></span>';
+  html += '<span class="row-body"><span class="row-name">' + esc(item.name) +
+    (item.local_name ? '<span class="row-local"> · ' + esc(item.local_name) + "</span>" : "") + "</span>";
+  if (bits.length) html += '<span class="row-meta">' + bits.join('<span class="row-sep"></span>') + "</span>";
+  html += "</span>";
+  html += '<svg class="icon row-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>';
+  html += "</button>";
+  html += favoriteButtonMarkup(item);
+  html += "</div>";
+  if (open) {
+    html += '<div class="row-details">' + detailsMarkup(item) + cardPhotosMarkup(item) +
+      notesMarkup(item) + actionsMarkup(item) + "</div>";
+  }
+  return html + "</li>";
+}
+
+function toggleRow(id) {
+  if (openRows.has(id)) openRows.delete(id);
+  else openRows.add(id);
+  const item = store.get(id);
+  const row = $("list").querySelector('[data-card-id="' + CSS.escape(id) + '"]');
+  if (!item || !row) {
+    render();
+    return;
+  }
+  row.insertAdjacentHTML("afterend", rowMarkup(item));
+  const next = row.nextElementSibling;
+  row.remove();
+  hydratePhotos(next);
+  next.querySelector(".row-main").focus({ preventScroll: true });
 }
 
 // A browser that has never joined starts empty; the diary may well be waiting
@@ -1049,7 +1131,8 @@ function anyModalOpen() {
 // Cards animate in when the list is loaded or the tab changes, not on every
 // filter keystroke, where replaying the entrance just makes the page flicker.
 function render(animate) {
-  $("list").classList.toggle("calm", !animate);
+  const rows = state.view === "rows";
+  $("list").className = (rows ? "rows" : "grid") + (animate ? "" : " calm");
   const wishlist = state.items.filter((i) => i.status === "wishlist");
   const visited = state.items.filter((i) => i.status === "visited");
   const rated = visited.filter((i) => i.rating > 0);
@@ -1116,8 +1199,12 @@ function render(animate) {
 
   if (showingMap) {
     renderMap(items);
+  } else if (!items.length) {
+    $("list").innerHTML = emptyMarkup();
   } else {
-    $("list").innerHTML = items.length ? items.map(cardMarkup).join("") : emptyMarkup();
+    $("list").innerHTML = rows
+      ? '<ul class="rows-list">' + items.map(rowMarkup).join("") + "</ul>"
+      : items.map(cardMarkup).join("");
     hydratePhotos($("list"));
   }
 }
@@ -1221,7 +1308,7 @@ function revealItem(id) {
   const item = state.items.find((i) => i.id === id);
   if (!item) return;
   closeAdd();
-  setView("list");
+  if (state.view === "map") setView(startingView());
   state.tab = item.status;
   syncTabs();
 
@@ -1770,6 +1857,133 @@ function removeItem(id) {
   toast(item.name + " removed.");
 }
 
+/* ---------- editing a restaurant's details ----------
+   Everything the search filled in can be corrected by hand: places move, change
+   their hours, or were never found properly in the first place. */
+
+const DETAIL_FIELDS = {
+  "d-name": "name", "d-local": "local_name", "d-address": "address", "d-city": "city",
+  "d-cuisine": "cuisine", "d-hours": "opening_hours", "d-phone": "phone", "d-website": "website",
+  "d-note": "wish_note",
+};
+
+let detailsId = null;
+let detailsSnapshot = "";
+
+function detailsStatus() {
+  const checked = document.querySelector('input[name="d-status"]:checked');
+  return checked && checked.value === "visited" ? "visited" : "wishlist";
+}
+
+function detailsValues() {
+  return JSON.stringify([
+    ...Object.keys(DETAIL_FIELDS).map((id) => $(id).value.trim()), state.detailsPrice, detailsStatus(),
+  ]);
+}
+
+// Opening hours are written the way the map data writes them, so the box says
+// plainly whether what's typed can be read back.
+function showHoursPreview() {
+  const help = $("d-hours-help");
+  const raw = $("d-hours").value.trim();
+  help.classList.remove("is-bad", "is-good");
+  if (!raw) {
+    help.textContent = "Days are Mo Tu We Th Fr Sa Su; separate rules with a semicolon. " +
+      "Leave empty if you don't know them.";
+    return;
+  }
+  const parsed = parseOpeningHours(raw);
+  const today = todayHours(parsed, new Date());
+  if (today === null) {
+    help.textContent = "This can't be read as opening hours, so the diary won't know when it's open. " +
+      "Example: Mo-Fr 09:00-17:00; Sa 10:00-14:00";
+    help.classList.add("is-bad");
+    return;
+  }
+  const nowOpen = openNow(parsed, new Date());
+  help.textContent = "Today: " + today + (nowOpen === null ? "" : nowOpen ? " — open now" : " — closed now");
+  help.classList.add("is-good");
+}
+
+function openDetails(id) {
+  const item = store.get(id);
+  if (!item) return;
+  detailsId = id;
+  $("details-for").innerHTML = "<strong>" + esc(item.name) + "</strong>";
+  Object.entries(DETAIL_FIELDS).forEach(([field, key]) => { $(field).value = item[key] || ""; });
+  const status = item.status === "visited" ? "visited" : "wishlist";
+  document.querySelector('input[name="d-status"][value="' + status + '"]').checked = true;
+  $("d-note-field").hidden = status === "visited";
+  state.detailsPrice = item.price || 0;
+  buildShekels("d-price", "detailsPrice");
+  $("d-error").hidden = true;
+  showHoursPreview();
+  detailsSnapshot = detailsValues();
+
+  openLayer("details-modal", closeDetails, () =>
+    detailsValues() === detailsSnapshot || window.confirm("Leave without saving your changes?"));
+  setTimeout(() => $("d-name").focus(), 60);
+}
+
+function closeDetails() {
+  closeLayer("details-modal");
+  detailsId = null;
+}
+
+function detailsError(message, focusId) {
+  $("d-error").textContent = message;
+  $("d-error").hidden = false;
+  $(focusId).focus();
+}
+
+function saveDetails() {
+  const item = detailsId && store.get(detailsId);
+  if (!item) {
+    closeDetails();
+    return;
+  }
+  const name = $("d-name").value.trim();
+  if (!name) {
+    detailsError("A restaurant needs a name.", "d-name");
+    return;
+  }
+  let website = $("d-website").value.trim();
+  if (website && !/^https?:\/\//i.test(website)) website = "https://" + website;
+  if (website && !safeUrl(website)) {
+    detailsError("That website address doesn't look right.", "d-website");
+    return;
+  }
+
+  const status = detailsStatus();
+  const changes = {
+    name,
+    local_name: $("d-local").value.trim(),
+    address: $("d-address").value.trim(),
+    city: $("d-city").value.trim(),
+    cuisine: $("d-cuisine").value.trim(),
+    opening_hours: $("d-hours").value.trim(),
+    phone: $("d-phone").value.trim(),
+    website,
+    wish_note: $("d-note").value.trim(),
+    price: state.detailsPrice,
+    status,
+  };
+  if (status === "visited" && !item.visited_at) changes.visited_at = nowIso();
+  // A saved menu belongs to the website it was found on.
+  if (item.menu && (item.website || "") !== website) changes.menu = undefined;
+
+  updateItem(item.id, changes);
+  closeDetails();
+  if (item.status !== status) {
+    state.tab = status;
+    syncTabs();
+    toast(name + (status === "visited" ? " moved to your visits." : " moved to your wishlist."));
+    return;
+  }
+  render();
+  toast("Saved.");
+}
+
 /* ---------- photos ---------- */
 
 // Phone photos are often 4-12 MB; 1600px JPEGs look the same on screen at a
@@ -2033,8 +2247,11 @@ async function findMenu(id, url) {
 
 /* ---------- near me ---------- */
 
+// Each device keeps the view it was last left in: the simple list suits a phone,
+// cards suit a wide screen.
 function setView(view) {
   state.view = view;
+  if (view !== "map") writeSetting("view", view);
   document.querySelectorAll(".view-btn").forEach((b) => {
     const on = b.dataset.view === view;
     b.classList.toggle("is-active", on);
@@ -2121,7 +2338,7 @@ setInterval(() => {
   if (document.hidden || anyModalOpen() || !$("lightbox").hidden) return;
   if ($("list").contains(document.activeElement)) return;
   const ids = visibleItems().map((i) => i.id).join(",");
-  if (state.view === "list" || ids !== lastVisibleIds) render();
+  if (state.view !== "map" || ids !== lastVisibleIds) render();
   lastVisibleIds = ids;
 }, 60000);
 $("save-place").addEventListener("click", savePlace);
@@ -2259,6 +2476,18 @@ $("close-review").addEventListener("click", closeReview);
 $("cancel-review").addEventListener("click", closeReview);
 $("save-review").addEventListener("click", saveReview);
 
+/* editing the details */
+$("close-details").addEventListener("click", closeDetails);
+$("cancel-details").addEventListener("click", closeDetails);
+$("details-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  saveDetails();
+});
+$("d-hours").addEventListener("input", showHoursPreview);
+document.querySelectorAll('input[name="d-status"]').forEach((radio) => {
+  radio.addEventListener("change", () => { $("d-note-field").hidden = detailsStatus() === "visited"; });
+});
+
 $("list").addEventListener("click", (event) => {
   const trigger = event.target.closest("[data-act]");
   if (!trigger) return;
@@ -2269,6 +2498,8 @@ $("list").addEventListener("click", (event) => {
   else if (action === "favorite") toggleFavorite(trigger.dataset.id);
   else if (action === "photo") openLightbox(trigger.dataset.id, Number(trigger.dataset.index));
   else if (action === "menu") openMenu(trigger.dataset.id);
+  else if (action === "details") openDetails(trigger.dataset.id);
+  else if (action === "expand") toggleRow(trigger.dataset.id);
 });
 
 /* joining straight from the empty first screen */
@@ -2577,5 +2808,6 @@ buildCountryOptions();
 showSearchCountry();
 applyGoogleStatus();
 renderShareButton();
+setView(state.view);
 render(true);
 startCloud().catch((err) => console.warn("Sharing unavailable:", err));

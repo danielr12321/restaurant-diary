@@ -40,6 +40,7 @@
   <symbol id="i-chef" viewBox="0 0 24 24"><path d="M6 18h12M6 14a4 4 0 0 1-1-7.9A4 4 0 0 1 12 4a4 4 0 0 1 7 2.1A4 4 0 0 1 18 14Z"/><path d="M7 14v4M17 14v4"/></symbol>
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/></symbol>
   <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></symbol>
   <symbol id="i-map" viewBox="0 0 24 24"><path d="m9 3-6 3v15l6-3 6 3 6-3V3l-6 3-6-3ZM9 3v15M15 6v15"/></symbol>
   <symbol id="i-crosshair" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
   <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
@@ -107,8 +108,11 @@
     </div>
 
     <div class="view-toggle" role="group" aria-label="View">
-      <button type="button" class="view-btn is-active" data-view="list" aria-pressed="true">
+      <button type="button" class="view-btn" data-view="rows" aria-pressed="false">
         <svg class="icon" aria-hidden="true"><use href="#i-list"/></svg> List
+      </button>
+      <button type="button" class="view-btn is-active" data-view="cards" aria-pressed="true">
+        <svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg> Cards
       </button>
       <button type="button" class="view-btn" data-view="map" aria-pressed="false">
         <svg class="icon" aria-hidden="true"><use href="#i-map"/></svg> Map
@@ -123,10 +127,13 @@
       <input type="search" id="filter" placeholder="Search your list" autocomplete="off" enterkeyhint="search">
     </div>
 
-    <!-- On phones the List/Map switch sits next to the search field -->
+    <!-- On phones the view switch sits next to the search field -->
     <div class="view-toggle view-toggle-compact" role="group" aria-label="View">
-      <button type="button" class="view-btn is-active" data-view="list" aria-pressed="true" aria-label="List">
+      <button type="button" class="view-btn is-active" data-view="rows" aria-pressed="true" aria-label="Simple list">
         <svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>
+      </button>
+      <button type="button" class="view-btn" data-view="cards" aria-pressed="false" aria-label="Cards">
+        <svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>
       </button>
       <button type="button" class="view-btn" data-view="map" aria-pressed="false" aria-label="Map">
         <svg class="icon" aria-hidden="true"><use href="#i-map"/></svg>
@@ -386,6 +393,94 @@
       <button type="button" class="btn btn-primary" id="save-review">Save</button>
     </div>
   </div>
+</div>
+
+<!-- Edit a restaurant's details -->
+<div class="modal-backdrop" id="details-modal" hidden>
+  <form class="modal modal-sm" id="details-form" role="dialog" aria-modal="true" aria-labelledby="details-title">
+    <div class="modal-head">
+      <h2 id="details-title">Edit details</h2>
+      <button type="button" class="btn-icon" id="close-details" aria-label="Close">
+        <svg class="icon"><use href="#i-x"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="review-for" id="details-for"></p>
+      <div class="field">
+        <label class="field-label" for="d-name">Name</label>
+        <input type="text" id="d-name" autocomplete="off">
+      </div>
+      <div class="field">
+        <label class="field-label" for="d-local">Name in its own language <span class="optional">(optional)</span></label>
+        <input type="text" id="d-local" autocomplete="off">
+      </div>
+
+      <fieldset class="choice">
+        <legend>Which list?</legend>
+        <div class="choice-row">
+          <label class="choice-card">
+            <input type="radio" name="d-status" value="wishlist">
+            <span class="choice-inner">
+              <svg class="icon" aria-hidden="true"><use href="#i-bookmark"/></svg>
+              <span class="choice-label">Want to go</span>
+            </span>
+          </label>
+          <label class="choice-card">
+            <input type="radio" name="d-status" value="visited">
+            <span class="choice-inner">
+              <svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>
+              <span class="choice-label">Been there</span>
+            </span>
+          </label>
+        </div>
+      </fieldset>
+
+      <div class="field">
+        <label class="field-label" for="d-address">Address</label>
+        <input type="text" id="d-address" autocomplete="off">
+      </div>
+      <div class="field">
+        <label class="field-label" for="d-city">City</label>
+        <input type="text" id="d-city" autocomplete="off">
+      </div>
+      <div class="field">
+        <label class="field-label" for="d-cuisine">Cuisine</label>
+        <input type="text" id="d-cuisine" autocomplete="off" placeholder="italian, sushi, bakery…">
+      </div>
+      <div class="field">
+        <span class="field-label" id="d-price-label">How pricey is it?</span>
+        <div class="shekels" id="d-price" role="radiogroup" aria-labelledby="d-price-label"></div>
+        <span class="field-help">Tap again to clear.</span>
+      </div>
+      <div class="field">
+        <label class="field-label" for="d-hours">Opening hours</label>
+        <input type="text" id="d-hours" autocomplete="off" spellcheck="false"
+               placeholder="Mo-Fr 09:00-17:00; Sa 10:00-14:00">
+        <span class="field-help" id="d-hours-help">Days are Mo Tu We Th Fr Sa Su; separate rules with a
+          semicolon. Leave empty if you don't know them.</span>
+      </div>
+      <div class="field">
+        <label class="field-label" for="d-phone">Phone</label>
+        <input type="text" id="d-phone" inputmode="tel" autocomplete="off">
+      </div>
+      <div class="field">
+        <label class="field-label" for="d-website">Website</label>
+        <input type="text" id="d-website" inputmode="url" autocomplete="off" spellcheck="false"
+               placeholder="restaurant.co.il">
+        <span class="field-help">The menu is searched on this site.</span>
+      </div>
+      <div class="field" id="d-note-field">
+        <label class="field-label" for="d-note">Why this one?</label>
+        <input type="text" id="d-note" autocomplete="off">
+        <span class="field-help">Shown on the card while it's still on the wishlist.</span>
+      </div>
+      <p class="menu-error" id="d-error" role="alert" hidden></p>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-ghost" id="cancel-details">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="save-details">Save</button>
+    </div>
+  </form>
 </div>
 
 <!-- Menu -->
