@@ -25,9 +25,10 @@ newest edit wins.
 
 1. **SQL Editor → New query**: paste `supabase/schema.sql` and run it. It's safe to run again.
 2. **Authentication → Sign In / Providers**: "Allow anonymous sign-ins" must be on.
-3. **Edge Functions → Deploy a new function → Via Editor**: name it `find-menu`, replace the sample code with
-   `supabase/functions/find-menu/index.ts`, and deploy. This is the menu finder: a web page can't read other
-   websites itself.
+3. **Edge Functions → Deploy a new function → Via Editor**: name it `find-menu`, keep the file inside named
+   `index.ts`, replace the sample code with `supabase/functions/find-menu/index.ts`, and deploy. It finds menus
+   and reads shared links, both of which need to fetch other websites — something a web page can't do itself.
+   Whenever that file changes here, paste it in again.
 
 ### Google Maps (optional)
 
@@ -46,6 +47,20 @@ place in Israel built in, `site/data/il-places.json`) and the map is Leaflet.
 
 The repository's **Settings → Pages → Source** must be **GitHub Actions**.
 `.github/workflows/publish.yml` publishes the `site` folder on every push to `main`.
+
+## Saving a restaurant from an Instagram reel
+
+Tap Share on the reel and choose the diary; it opens on the add screen with the
+place already looked up. Instagram tells nobody who isn't logged in what a post
+says, but the diary works from what a link does give: the account that posted
+it, and the caption's tagged accounts, each resolved to its real name.
+
+- **Android:** install the diary (Settings → Install, or the browser menu), and it appears in Instagram's
+  share sheet. The manifest's `share_target` sends the link to `share`, which the service worker turns into
+  `?url=…` for the page.
+- **iPhone:** Apple has no share targets for web apps. A Shortcut set to "Show in Share Sheet" with
+  **Open URLs → `https://danielr12321.github.io/restaurant-diary/?url=` + Shortcut Input** does the same.
+  It opens the diary in Safari, so Safari joins the diary with its code once, like any other device.
 
 ## Everyday
 
