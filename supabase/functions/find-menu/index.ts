@@ -14,6 +14,8 @@
 // built entirely in JavaScript can be linked but not read, and the result says so.
 
 const USER_AGENT = "Mozilla/5.0 (compatible; RestaurantDiary/1.0; personal use)";
+// Sites that turn away servers often still answer the crawler that fetches link previews.
+const CRAWLER_AGENT = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)";
 const TIMEOUT_MS = 10_000;
 const TIME_BUDGET_MS = 30_000; // for one whole search, however many pages it opens
 const MAX_BYTES = 3 * 1024 * 1024;
@@ -179,7 +181,7 @@ async function readLimited(response: Response, max: number): Promise<Uint8Array>
 
 type Fetched = { finalUrl: string; contentType: string; body: Uint8Array };
 
-async function fetchPage(url: string, ctx: Context): Promise<Fetched> {
+async function fetchPage(url: string, ctx: Context, agent = USER_AGENT): Promise<Fetched> {
   let current = asciiUrl(url);
   for (let hop = 0; hop < 8; hop += 1) {
     await checkHost(current, ctx.resolve);
@@ -188,7 +190,7 @@ async function fetchPage(url: string, ctx: Context): Promise<Fetched> {
       response = await fetch(current, {
         redirect: "manual",
         headers: {
-          "User-Agent": USER_AGENT,
+          "User-Agent": agent,
           "Accept": "text/html,application/xhtml+xml,application/pdf;q=0.9,*/*;q=0.5",
           "Accept-Language": "he,en;q=0.8",
         },
@@ -1014,13 +1016,34 @@ function captionOf(title: string): string {
   return open >= 0 && close > open ? clean.slice(open + 1, close).trim() : "";
 }
 
+// Words a restaurant tacks onto its account name, not part of what it's called.
+const HANDLE_NOISE = ["rest", "restaurant", "resturant", "official", "il", "israel", "tlv",
+  "telaviv", "tel", "aviv", "the", "eat", "eats", "food", "kitchen", "bar", "co"];
+
+/** "kalamata.rest" -> "Kalamata", "port_said_tlv" -> "Port Said". */
+function readableHandle(handle: string): string {
+  const parts = handle.split(/[._\-\d]+/).filter(Boolean);
+  const kept = parts.filter((part, index) => index === 0 || !HANDLE_NOISE.includes(part.toLowerCase()));
+  return kept.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+/**
+ * An account's own name ("Kalamata-קלמטה"), which is what to look the place up by.
+ * Instagram rate-limits these page reads from server addresses, so a blocked try
+ * is repeated as the crawler it does answer, and the handle stands in if both fail.
+ */
 async function instagramName(handle: string, ctx: Context): Promise<string> {
-  try {
-    const profile = await fetchPage("https://www.instagram.com/" + encodeURIComponent(handle) + "/", ctx);
-    return accountName(ogTag(decodeBody(profile.body, profile.contentType), "title"));
-  } catch {
-    return "";
+  const url = "https://www.instagram.com/" + encodeURIComponent(handle) + "/";
+  for (const agent of [USER_AGENT, CRAWLER_AGENT]) {
+    try {
+      const profile = await fetchPage(url, ctx, agent);
+      const name = accountName(ogTag(decodeBody(profile.body, profile.contentType), "title"));
+      if (name) return name;
+    } catch {
+      /* rate-limited or not readable: try the next way round */
+    }
   }
+  return readableHandle(handle);
 }
 
 /**
