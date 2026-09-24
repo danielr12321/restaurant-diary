@@ -513,7 +513,17 @@ export async function findMenuOnline(website, url) {
 
 /** What a link shared from Instagram (or anywhere) says about the place. */
 export async function readSharedLink(link) {
-  const data = await callMenuFunction({ link });
+  let data;
+  try {
+    data = await callMenuFunction({ link });
+  } catch (err) {
+    // The older helper knew only how to look for menus, so it answers a shared link with this.
+    if (/no website on record/i.test(err.message)) {
+      throw new Error("The diary's helper in Supabase is still the older version — deploy the new " +
+        "find-menu code once and this will work.");
+    }
+    throw err;
+  }
   if (!data.link) throw new Error(data.error || "That link couldn't be read.");
   return data.link;
 }
