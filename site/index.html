@@ -130,10 +130,10 @@
 
     <!-- On phones the view switch sits next to the search field -->
     <div class="view-toggle view-toggle-compact" role="group" aria-label="View">
-      <button type="button" class="view-btn is-active" data-view="rows" aria-pressed="true" aria-label="Simple list">
+      <button type="button" class="view-btn" data-view="rows" aria-pressed="false" aria-label="Simple list">
         <svg class="icon" aria-hidden="true"><use href="#i-list"/></svg>
       </button>
-      <button type="button" class="view-btn" data-view="cards" aria-pressed="false" aria-label="Cards">
+      <button type="button" class="view-btn is-active" data-view="cards" aria-pressed="true" aria-label="Cards">
         <svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg>
       </button>
       <button type="button" class="view-btn" data-view="map" aria-pressed="false" aria-label="Map">
@@ -289,6 +289,14 @@
       <div id="step-confirm" hidden>
         <div class="dup-warning" id="dup-warning" role="alert" hidden></div>
         <div class="preview" id="preview"></div>
+
+        <label class="chain-option" id="chain-option" hidden>
+          <input type="checkbox" id="chain-check">
+          <span class="chain-text">
+            <strong id="chain-title">Save as one chain</strong>
+            <span class="field-help" id="chain-help"></span>
+          </span>
+        </label>
 
         <fieldset class="choice">
           <legend>Have you been?</legend>
@@ -479,6 +487,19 @@
         <span class="field-help">The menu is searched on this site.</span>
       </div>
       <div class="field">
+        <label class="chain-option">
+          <input type="checkbox" id="d-chain">
+          <span class="chain-text">
+            <strong>A chain with several branches</strong>
+            <span class="field-help" id="d-chain-help"></span>
+          </span>
+        </label>
+        <button type="button" class="btn btn-ghost btn-sm" id="d-find-branches">
+          <svg class="icon" aria-hidden="true"><use href="#i-pin"/></svg> Find its branches
+        </button>
+      </div>
+
+      <div class="field">
         <label class="field-label" for="d-source">Link you saved it from <span class="optional">(optional)</span></label>
         <input type="text" id="d-source" inputmode="url" autocomplete="off" spellcheck="false"
                placeholder="instagram.com/reel/…">
@@ -495,6 +516,19 @@
       <button type="submit" class="btn btn-primary" id="save-details">Save</button>
     </div>
   </form>
+</div>
+
+<!-- A chain's branches -->
+<div class="modal-backdrop" id="branches-modal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="branches-title">
+    <div class="modal-head">
+      <h2 id="branches-title">Branches</h2>
+      <button type="button" class="btn-icon" id="close-branches" aria-label="Close">
+        <svg class="icon"><use href="#i-x"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="branches-body"></div>
+  </div>
 </div>
 
 <!-- Menu -->

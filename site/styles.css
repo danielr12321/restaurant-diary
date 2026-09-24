@@ -541,6 +541,28 @@ select {
 }
 .result.is-loading { opacity: .6; cursor: progress; }
 
+/* ---------- Chains ---------- */
+
+.chain-option {
+  display: flex; align-items: flex-start; gap: var(--space-2);
+  margin-bottom: var(--space-3); padding: var(--space-3);
+  border: 1px solid var(--color-border-strong); border-radius: var(--radius);
+  background: var(--color-card); cursor: pointer;
+}
+.chain-option input { width: 20px; height: 20px; margin-top: 2px; flex: none; accent-color: var(--color-primary); }
+.chain-text { min-width: 0; }
+.chain-text .field-help { margin-top: 2px; }
+.branch-more { margin-left: 6px; }
+
+.branch-list { list-style: none; margin: 0; padding: 0; }
+.branch-list li {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: 10px 0; border-bottom: 1px solid var(--color-border);
+}
+.branch-list li:last-child { border-bottom: 0; }
+.branch-list span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.branch-meta { display: block; font-size: 13px; color: var(--color-muted-foreground); }
+
 /* ---------- Recommend one ---------- */
 
 /* The whole width, under the search box: it's the other way into the dialog,

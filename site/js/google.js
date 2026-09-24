@@ -367,12 +367,31 @@ const SUGGEST_FIELDS = [
   "places.addressComponents", "places.location", "places.primaryType", "places.types",
 ].join(",");
 
-/** Well-known restaurants in a country, for "recommend me one". */
-export async function suggestPlaces(country, where) {
+/** Well-known restaurants for "recommend me one"; `query` is asked as typed. */
+export async function suggestPlaces(country, query) {
   const key = googleKey();
   if (!key) throw new GoogleError("No Google API key is set.", false);
   const body = {
-    textQuery: "popular restaurants in " + (where || "Israel"),
+    textQuery: query,
+    languageCode: "en",
+    regionCode: country || "il",
+    includedType: "restaurant",
+    pageSize: 20,
+  };
+  const raw = await billedCall("suggest", "POST", "/places:searchText", key,
+    { body, fieldMask: SUGGEST_FIELDS });
+  return (raw.places || []).map(normalizeDetails).filter((place) => place.is_food);
+}
+
+/**
+ * The branches of a chain, for countries the built-in Israeli list doesn't
+ * cover. Same search and same monthly allowance as a recommendation.
+ */
+export async function findBranchesOnline(name, country, where) {
+  const key = googleKey();
+  if (!key) throw new GoogleError("No Google API key is set.", false);
+  const body = {
+    textQuery: name + (where ? " " + where : ""),
     languageCode: "en",
     regionCode: country || "il",
     includedType: "restaurant",

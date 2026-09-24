@@ -11,23 +11,20 @@ import {
 } from "./cloud.js";
 import {
   googleStatus, saveGoogleKey, deviceUsage, hasRoom, limitMessage, autocomplete, placeDetails,
-  suggestPlaces, LimitReached,
+  suggestPlaces, findBranchesOnline, LimitReached,
 } from "./google.js";
-import { searchFreePlaces } from "./osm.js";
+import { searchFreePlaces, findBranches, chainKey } from "./osm.js";
 import { createMapView } from "./map.js";
 
 const DAY_KEYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 // Where the diary lives, used when no country is chosen for a search.
 const HOME_COUNTRY = "il";
 
-const PHONE = window.matchMedia("(max-width: 720px)");
-
-// Phones open on the simple list, wide screens on cards, unless this device
-// was last left in the other one. The map is never the view a visit starts in.
+// Cards to begin with, on any screen; the simple list is one tap away and each
+// device keeps whichever it was last left in. The map is never where a visit starts.
 function startingView() {
   const saved = readSetting("view", "");
-  if (saved === "rows" || saved === "cards") return saved;
-  return PHONE.matches ? "rows" : "cards";
+  return saved === "rows" || saved === "cards" ? saved : "cards";
 }
 
 const state = {
@@ -56,6 +53,8 @@ const state = {
   choosing: false,
   sharedLink: "",
   suggested: null,
+  branches: [],
+  detailsBranches: [],
   searchCountry: readSetting("search-country", ""),
 };
 
@@ -258,11 +257,11 @@ function hoursMarkup(rawHours) {
 }
 
 function isOpenNow(item) {
-  return openNow(parseOpeningHours(item.opening_hours), new Date()) === true;
+  return openNow(parseOpeningHours(hoursOf(item)), new Date()) === true;
 }
 
 function hasReadableHours(item) {
-  return openNow(parseOpeningHours(item.opening_hours), new Date()) !== null;
+  return openNow(parseOpeningHours(hoursOf(item)), new Date()) !== null;
 }
 
 /* ---------- metadata rows shared by cards and the preview ---------- */
@@ -320,8 +319,56 @@ function haversineKm(from, to) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+/* ---------- chains ----------
+   A chain is one entry with the addresses of its branches on it, so the diary
+   holds "Landwer", not fourteen Landwers. Distance, opening hours and the map
+   then work from whichever branch is nearest. */
+
+function branchesOf(item) {
+  return item.chain && Array.isArray(item.branches) ? item.branches.filter((b) => b && b.lat) : [];
+}
+
+function nearestBranch(item) {
+  if (!state.origin) return null;
+  let best = null;
+  branchesOf(item).forEach((branch) => {
+    const lat = parseFloat(branch.lat);
+    const lon = parseFloat(branch.lon);
+    if (!isFinite(lat) || !isFinite(lon)) return;
+    const km = haversineKm(state.origin, { lat: lat, lon: lon });
+    if (!best || km < best.km) best = { branch, km };
+  });
+  return best;
+}
+
+/** The hours to judge "open now" by: the nearest branch's, or any branch's. */
+function hoursOf(item) {
+  if (item.opening_hours) return item.opening_hours;
+  const near = nearestBranch(item);
+  if (near && near.branch.opening_hours) return near.branch.opening_hours;
+  const any = branchesOf(item).find((branch) => branch.opening_hours);
+  return any ? any.opening_hours : "";
+}
+
+/** A chain shown as the branch that matters right now. */
+function asShown(item) {
+  const branches = branchesOf(item);
+  if (!branches.length) return item;
+  const near = nearestBranch(item);
+  const branch = near ? near.branch : branches[0];
+  return {
+    ...item,
+    address: branch.address || item.address,
+    city: branch.city || item.city,
+    phone: branch.phone || item.phone,
+    opening_hours: hoursOf(item),
+  };
+}
+
 function distanceKm(item) {
   if (!state.origin) return null;
+  const near = nearestBranch(item);
+  if (near) return near.km;
   const lat = parseFloat(item.lat);
   const lon = parseFloat(item.lon);
   if (!isFinite(lat) || !isFinite(lon)) return null;
@@ -455,10 +502,36 @@ function toggleFavorite(id) {
 
 /* ---------- cards ---------- */
 
+function branchesMarkup(item) {
+  const branches = branchesOf(item);
+  if (!branches.length) return "";
+  const near = nearestBranch(item);
+  const where = item.country ? " in " + esc(item.country) : "";
+  return '<div class="meta-row">' + icon("pin") + "<span>" + branches.length + " branch" +
+    (branches.length === 1 ? "" : "es") + where +
+    (near ? " · nearest: " + esc(near.branch.address || near.branch.city || formatDistance(near.km)) : "") +
+    " · " +
+    '<button type="button" class="link-btn branch-more" data-act="branches" data-id="' + esc(item.id) +
+    '">see them all</button></span></div>';
+}
+
 // The address, hours, menu and distance, shared by both layouts.
 function detailsMarkup(item) {
   const km = distanceKm(item);
-  let html = '<div class="card-meta">' + metaMarkup(item, true);
+  const branches = branchesOf(item);
+  let html = '<div class="card-meta">';
+  html += branches.length ? branchesMarkup(item) + hoursMarkup(hoursOf(item)) : metaMarkup(item, true);
+  if (branches.length) {
+    // A chain's phone and website belong to the chain, not to one branch.
+    const shown = asShown(item);
+    if (shown.phone) html += '<div class="meta-row">' + icon("phone") + "<span>" + esc(shown.phone) + "</span></div>";
+    const site = safeUrl(item.website);
+    if (site) {
+      html += '<div class="meta-row">' + icon("globe") +
+        '<span><a href="' + esc(site) + '" target="_blank" rel="noopener noreferrer">' +
+        esc(site.replace(/^https?:\/\//, "").replace(/\/$/, "")) + "</a></span></div>";
+    }
+  }
   if (km !== null) {
     html += '<div class="meta-row">' + icon("crosshair") +
       "<span>" + esc(formatDistance(km)) + "</span></div>";
@@ -568,11 +641,13 @@ const openRows = new Set();
 function rowMarkup(item) {
   const open = openRows.has(item.id);
   const cuisine = prettyCuisine(item.cuisine);
-  const nowOpen = openNow(parseOpeningHours(item.opening_hours), new Date());
+  const nowOpen = openNow(parseOpeningHours(hoursOf(item)), new Date());
   const km = distanceKm(item);
 
+  const branches = branchesOf(item);
   const bits = [];
   if (item.rating) bits.push('<span class="row-rating">' + icon("star", "on") + item.rating + "</span>");
+  if (branches.length) bits.push(branches.length + " branches");
   if (cuisine) bits.push('<span class="row-cuisine">' + esc(cuisine) + "</span>");
   if (item.price) bits.push(priceStatic(item.price));
   if (item.city) bits.push(esc(item.city));
@@ -749,11 +824,11 @@ function refreshFilterOptions() {
 
 /* ---------- map ---------- */
 
-function popupMarkup(item) {
+function popupMarkup(item, branch) {
   const bits = ['<strong>' + (item.favorite ? "★ " : "") + esc(item.name) + "</strong>"];
   const cuisine = prettyCuisine(item.cuisine);
   if (cuisine) bits.push(esc(cuisine));
-  const parsed = parseOpeningHours(item.opening_hours);
+  const parsed = parseOpeningHours((branch && branch.opening_hours) || hoursOf(item));
   const open = openNow(parsed, new Date());
   if (open !== null) {
     const change = nextChange(parsed, new Date());
@@ -761,7 +836,9 @@ function popupMarkup(item) {
   }
   if (item.rating) bits.push("★".repeat(item.rating));
   if (item.price) bits.push("₪".repeat(item.price));
-  if (item.address) bits.push(esc(item.address));
+  const where = branch ? branch.address || branch.city : item.address;
+  if (where) bits.push(esc(where));
+  if (branch) bits.push("One of " + branchesOf(item).length + " branches");
   return bits.join("<br>");
 }
 
@@ -1496,8 +1573,23 @@ function setSearchNotice(text) {
    the add screen is set to, that isn't in the diary yet. One search covers a
    whole run of suggestions, so tapping "another one" costs Google nothing. */
 
-const suggestions = new Map(); // country -> { at, places, next }
-const SUGGEST_AGE = 7 * 24 * 3600e3;
+// Google answers one question with about twenty places, so the question changes
+// as they run out: other wordings first, then cuisine by cuisine. Each new
+// question is one request and yields another twenty, and every place already
+// shown is remembered, so the same names don't come round again.
+const SUGGEST_ANGLES = ["popular restaurants in", "best restaurants in", "famous restaurants in",
+  "highly rated restaurants in", "where locals eat in"];
+const SUGGEST_CUISINES = ["italian", "sushi", "seafood", "vegetarian", "steak", "middle eastern",
+  "burger", "asian", "french", "breakfast", "bakery", "pizza", "mexican", "indian", "tapas",
+  "hummus", "fish", "vegan", "dessert", "grill"];
+
+function suggestQuery(where, angle) {
+  if (angle < SUGGEST_ANGLES.length) return SUGGEST_ANGLES[angle] + " " + where;
+  const cuisine = SUGGEST_CUISINES[(angle - SUGGEST_ANGLES.length) % SUGGEST_CUISINES.length];
+  return "best " + cuisine + " restaurants in " + where;
+}
+
+const pools = new Map(); // country -> places fetched this visit
 
 function suggestCountry() {
   const code = state.searchCountry || HOME_COUNTRY;
@@ -1513,16 +1605,41 @@ function suggestionBox(html) {
   $("suggestion").hidden = !html;
 }
 
-function nextSuggestion(country) {
-  const saved = suggestions.get(country);
-  if (!saved) return null;
-  // Places already in the diary are skipped.
-  for (let tries = 0; tries < saved.places.length; tries += 1) {
-    const place = saved.places[saved.next % saved.places.length];
-    saved.next += 1;
-    if (!findDuplicates(place).length) return place;
+// What this device has already been offered for a country, so tomorrow's
+// suggestions carry on rather than start over.
+function suggestMemory(country) {
+  const saved = readSetting("suggest-" + country, null);
+  return {
+    angle: (saved && Number(saved.angle)) || 0,
+    seen: new Set((saved && saved.seen) || []),
+  };
+}
+
+function rememberSuggestions(country, memory) {
+  writeSetting("suggest-" + country, { angle: memory.angle, seen: [...memory.seen].slice(-300) });
+}
+
+/** The next place nobody has been offered yet, and that isn't in the diary. */
+function nextSuggestion(country, memory) {
+  const pool = pools.get(country) || [];
+  for (const place of pool) {
+    const id = place.google_place_id || place.name;
+    if (memory.seen.has(id) || findDuplicates(place).length) continue;
+    memory.seen.add(id);
+    rememberSuggestions(country, memory);
+    return place;
   }
   return null;
+}
+
+function addToPool(country, places) {
+  const pool = pools.get(country) || [];
+  const known = new Set(pool.map((place) => place.google_place_id));
+  places.forEach((place) => {
+    if (!known.has(place.google_place_id)) pool.push(place);
+  });
+  // A little shuffle so the answer isn't Google's order every evening.
+  pools.set(country, pool.sort(() => Math.random() - 0.5));
 }
 
 function showSuggestion(place, where) {
@@ -1545,41 +1662,51 @@ function showSuggestion(place, where) {
     "Another one</button></div>");
 }
 
-async function recommend(again) {
+async function recommend() {
   const { code, name } = suggestCountry();
   if (!googleStatus().configured) {
     suggestionBox('<p class="menu-message">Recommendations come from Google Maps. Connect it in ' +
       "Settings (the gear at the top) and this will work.</p>");
     return;
   }
-  const saved = suggestions.get(code);
-  if (saved && Date.now() - saved.at < SUGGEST_AGE) {
-    showSuggestion(nextSuggestion(code), name);
+
+  const memory = suggestMemory(code);
+  const ready = nextSuggestion(code, memory);
+  if (ready) {
+    showSuggestion(ready, name);
     return;
   }
 
   suggestionBox('<p class="menu-status">' + spinnerMarkup() + "Looking for a good place in " +
     esc(name) + "…</p>");
   try {
-    const places = await suggestPlaces(code, name);
-    if (!places.length) {
-      suggestionBox('<p class="menu-message">Google had no restaurants to suggest for ' + esc(name) +
-        ".</p>");
-      return;
+    // Ask a different way until something new comes back (or it's clear the
+    // country has been mined out for now).
+    for (let tries = 0; tries < 3; tries += 1) {
+      const query = suggestQuery(name, memory.angle);
+      memory.angle += 1;
+      rememberSuggestions(code, memory);
+      addToPool(code, await suggestPlaces(code, query));
+      applyGoogleStatus();
+      const place = nextSuggestion(code, memory);
+      if (place) {
+        showSuggestion(place, name);
+        return;
+      }
     }
-    // Google's order puts the best known first; a little shuffle among the top
-    // ones keeps the answer from being the same place every evening.
-    const top = places.slice(0, 12).sort(() => Math.random() - 0.5).concat(places.slice(12));
-    suggestions.set(code, { at: Date.now(), places: top, next: 0 });
-    applyGoogleStatus();
-    showSuggestion(nextSuggestion(code), name);
+    // Everything Google offers is either in the diary already or has been shown.
+    memory.seen = new Set();
+    memory.angle = 0;
+    rememberSuggestions(code, memory);
+    suggestionBox('<p class="menu-message">That is every place Google suggested for ' + esc(name) +
+      " so far — they're either in your diary already or you've just seen them. Tap again to " +
+      "start the round afresh.</p>");
   } catch (err) {
     suggestionBox('<p class="menu-error">' + esc(err.message) +
       (/unknown request kind|violates check constraint|invalid usage/i.test(err.message)
         ? " Run supabase/schema.sql once more so the diary counts recommendations too." : "") + "</p>");
     applyGoogleStatus();
   }
-  if (again) $("suggest-btn").focus();
 }
 
 /* ---------- a reel shared from Instagram ----------
@@ -1865,6 +1992,22 @@ function showConfirm(place) {
     });
   }
 
+  // Chains: ask the built-in Israeli list whether this name is in many places.
+  state.branches = [];
+  $("chain-option").hidden = true;
+  $("chain-check").checked = false;
+  if (!manual && place.name) {
+    const country = place.country_code || state.searchCountry || HOME_COUNTRY;
+    findBranches(place.name, country).then((branches) => {
+      if (state.selectedPlace !== place || branches.length < 3) return;
+      state.branches = branches;
+      $("chain-title").textContent = "Save as one chain (" + branches.length + " places)";
+      $("chain-help").textContent = "Keeps a single " + place.name + " in the diary and remembers " +
+        "where every branch is, so Near me points at the closest one.";
+      $("chain-option").hidden = false;
+    }).catch(() => { /* no list for this country */ });
+  }
+
   state.draftPrice = place.price || 0;
   $("price-help").textContent = manual
     ? "Optional — tap again to clear."
@@ -1944,6 +2087,12 @@ async function savePlace() {
   };
 
   if (!item.name) { toast("Give the restaurant a name first."); return; }
+
+  if ($("chain-check").checked && state.branches.length) {
+    item.chain = true;
+    item.branches = state.branches;
+    item.branches_at = nowIso();
+  }
 
   if (status === "visited") {
     item.rating = state.draftRating;
@@ -2070,7 +2219,37 @@ function detailsStatus() {
 function detailsValues() {
   return JSON.stringify([
     ...Object.keys(DETAIL_FIELDS).map((id) => $(id).value.trim()), state.detailsPrice, detailsStatus(),
+    $("d-chain").checked, state.detailsBranches.length,
   ]);
+}
+
+function showChainHelp() {
+  const count = state.detailsBranches.length;
+  $("d-chain-help").textContent = count
+    ? count + " branch" + (count === 1 ? "" : "es") + " known. Near me and the map use the closest one."
+    : "None known yet. “Find its branches” looks them up — free in Israel, one Google " +
+      "search elsewhere.";
+  $("d-chain").disabled = !count;
+}
+
+async function findBranchesFor(name, item) {
+  const country = state.searchCountry || HOME_COUNTRY;
+  const local = await findBranches(name, country);
+  if (local.length) return local;
+  if (!googleStatus().configured) return [];
+  // Outside Israel there's no built-in list, so this is one Google search.
+  const places = await findBranchesOnline(name, country, item.city || item.country || "");
+  const wanted = chainKey(name);
+  return places.filter((place) => chainKey(place.name) === wanted).map((place) => ({
+    name: place.name,
+    address: place.address || "",
+    city: place.city || "",
+    lat: place.lat,
+    lon: place.lon,
+    opening_hours: "",
+    phone: "",
+    google_place_id: place.google_place_id || "",
+  }));
 }
 
 // Opening hours are written the way the map data writes them, so the box says
@@ -2108,6 +2287,9 @@ function openDetails(id) {
   $("d-note-field").hidden = status === "visited";
   state.detailsPrice = item.price || 0;
   buildShekels("d-price", "detailsPrice");
+  state.detailsBranches = branchesOf(item).slice();
+  $("d-chain").checked = !!item.chain;
+  showChainHelp();
   $("d-error").hidden = true;
   showHoursPreview();
   detailsSnapshot = detailsValues();
@@ -2153,8 +2335,12 @@ function saveDetails() {
     return;
   }
 
+  const chain = $("d-chain").checked && state.detailsBranches.length > 0;
   const status = detailsStatus();
   const changes = {
+    chain,
+    branches: chain ? state.detailsBranches : undefined,
+    branches_at: chain ? (item.branches_at || nowIso()) : undefined,
     source_url: source,
     name,
     local_name: $("d-local").value.trim(),
@@ -2182,6 +2368,44 @@ function saveDetails() {
   }
   render();
   toast("Saved.");
+}
+
+/* ---------- a chain's branches ---------- */
+
+function openBranches(id) {
+  const item = store.get(id);
+  if (!item) return;
+  const now = new Date();
+  const list = branchesOf(item).map((branch) => ({
+    branch,
+    km: state.origin ? haversineKm(state.origin, {
+      lat: parseFloat(branch.lat), lon: parseFloat(branch.lon),
+    }) : null,
+  }));
+  if (state.origin) list.sort((a, b) => a.km - b.km);
+
+  $("branches-title").textContent = item.name;
+  $("branches-body").innerHTML = "<p class=\"hint\">" + list.length + " branch" +
+    (list.length === 1 ? "" : "es") + (item.branches_at
+      ? ", found " + esc(new Date(item.branches_at).toLocaleDateString()) : "") + ".</p>" +
+    '<ul class="branch-list">' + list.map(({ branch, km }) => {
+      const open = openNow(parseOpeningHours(branch.opening_hours), now);
+      const bits = [];
+      if (km !== null) bits.push(esc(formatDistance(km)));
+      if (open !== null) bits.push(open ? "open now" : "closed now");
+      if (branch.phone) bits.push(esc(branch.phone));
+      return "<li><span><strong>" + esc(branch.address || branch.city || item.name) + "</strong>" +
+        (bits.length ? '<span class="branch-meta">' + bits.join(" · ") + "</span>" : "") + "</span>" +
+        '<a class="btn-icon" href="https://www.google.com/maps/search/?api=1&query=' +
+        encodeURIComponent(branch.lat + "," + branch.lon) + '" target="_blank" ' +
+        'rel="noopener noreferrer" title="Show on the map" aria-label="Show this branch on the map">' +
+        icon("external") + "</a></li>";
+    }).join("") + "</ul>";
+  openLayer("branches-modal", closeBranches);
+}
+
+function closeBranches() {
+  closeLayer("branches-modal");
 }
 
 /* ---------- photos ---------- */
@@ -2659,12 +2883,12 @@ $("results-empty").addEventListener("click", (event) => {
   showConfirm({ manual: true, name: $("place-search").value.trim(), city: "" });
 });
 
-$("suggest-btn").addEventListener("click", () => recommend(false));
+$("suggest-btn").addEventListener("click", () => recommend());
 $("suggestion").addEventListener("click", (event) => {
   const button = event.target.closest("[data-suggest]");
   if (!button) return;
   if (button.dataset.suggest === "next") {
-    recommend(true);
+    recommend();
     return;
   }
   const place = state.suggested;
@@ -2705,6 +2929,28 @@ $("details-form").addEventListener("submit", (event) => {
   saveDetails();
 });
 $("d-hours").addEventListener("input", showHoursPreview);
+$("close-branches").addEventListener("click", closeBranches);
+$("d-find-branches").addEventListener("click", async () => {
+  const item = detailsId && store.get(detailsId);
+  if (!item) return;
+  const button = $("d-find-branches");
+  const original = button.innerHTML;
+  button.disabled = true;
+  button.textContent = "Looking…";
+  try {
+    const found = await findBranchesFor($("d-name").value.trim() || item.name, item);
+    state.detailsBranches = found;
+    if (found.length > 1) $("d-chain").checked = true;
+    applyGoogleStatus();
+    showChainHelp();
+    if (!found.length) toast("No other branches found under that name.");
+  } catch (err) {
+    toast("Couldn't look for branches: " + err.message);
+  } finally {
+    button.innerHTML = original;
+    button.disabled = false;
+  }
+});
 document.querySelectorAll('input[name="d-status"]').forEach((radio) => {
   radio.addEventListener("change", () => { $("d-note-field").hidden = detailsStatus() === "visited"; });
 });
@@ -2720,6 +2966,7 @@ $("list").addEventListener("click", (event) => {
   else if (action === "photo") openLightbox(trigger.dataset.id, Number(trigger.dataset.index));
   else if (action === "menu") openMenu(trigger.dataset.id);
   else if (action === "details") openDetails(trigger.dataset.id);
+  else if (action === "branches") openBranches(trigger.dataset.id);
   else if (action === "expand") toggleRow(trigger.dataset.id);
 });
 

@@ -47,6 +47,91 @@ function loadIndex() {
   return loading;
 }
 
+/* ---------- chains ---------- */
+
+// Words that differ between two branches of the same chain, or between the two
+// ways a place writes its own name ("Landwer" and "Cafe Landwer").
+const GENERIC_WORDS = /\b(restaurant|ristorante|cafe|caffe|coffee|bar|bistro|pizza|the|and)\b/g;
+const GENERIC_HEBREW = /(^|\s)(מסעדת|מסעדה|קפה|בית קפה|פיצה)(?=\s|$)/g;
+
+/** The name two branches of one chain share, or "" if there isn't one. */
+export function chainKey(name) {
+  const base = String(name || "").toLowerCase()
+    .normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[֑-ׇ]/g, "")
+    .replace(/['"״׳`’.,!?&()\-–—_/:]+/g, " ");
+  const stripped = base.replace(GENERIC_WORDS, " ").replace(GENERIC_HEBREW, " ");
+  return stripped.replace(/\s+/g, " ").trim() || base.replace(/\s+/g, " ").trim();
+}
+
+function branchOf(place) {
+  return {
+    name: place.name,
+    address: place.address || "",
+    city: place.city || "",
+    lat: place.lat,
+    lon: place.lon,
+    opening_hours: place.opening_hours || "",
+    phone: place.phone || "",
+    osm_id: place.osm_id,
+    osm_type: place.osm_type,
+  };
+}
+
+/**
+ * Every place in Israel that goes by this name — the branches of a chain.
+ * Free and instant: it reads the list of Israeli places that ships with the
+ * site, so no request leaves the device.
+ */
+export async function findBranches(name, country) {
+  if (country && country !== HOME_COUNTRY) return [];
+  const wanted = chainKey(name);
+  if (wanted.length < 3) return [];
+  let all;
+  try {
+    all = await loadIndex();
+  } catch (err) {
+    return [];
+  }
+  const found = [];
+  const seen = new Set();
+  all.forEach((place) => {
+    const matches = [place.name, place.local_name, place.name_he]
+      .filter(Boolean).some((one) => chainKey(one) === wanted);
+    if (!matches) return;
+    const key = osmKey(place);
+    if (seen.has(key)) return;
+    seen.add(key);
+    found.push(branchOf(place));
+  });
+  return mergeNeighbours(found);
+}
+
+/**
+ * One café mapped twice is still one branch: entries within about 60 m of each
+ * other are merged, keeping whichever knows the most about the place.
+ */
+function mergeNeighbours(branches) {
+  const kept = [];
+  const known = (branch) => (branch.address ? 2 : 0) + (branch.city ? 1 : 0) +
+    (branch.opening_hours ? 2 : 0) + (branch.phone ? 1 : 0);
+  branches.forEach((branch) => {
+    const lat = parseFloat(branch.lat);
+    const lon = parseFloat(branch.lon);
+    if (!isFinite(lat) || !isFinite(lon)) return;
+    const near = kept.find((other) => {
+      const dLat = (parseFloat(other.lat) - lat) * 111.3;
+      const dLon = (parseFloat(other.lon) - lon) * 111.3 * Math.cos(lat * Math.PI / 180);
+      return Math.sqrt(dLat * dLat + dLon * dLon) < 0.06;
+    });
+    if (!near) {
+      kept.push(branch);
+      return;
+    }
+    if (known(branch) > known(near)) kept[kept.indexOf(near)] = branch;
+  });
+  return kept;
+}
+
 /* ---------- matching ---------- */
 
 /**
