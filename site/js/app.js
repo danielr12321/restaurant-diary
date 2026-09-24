@@ -1505,7 +1505,7 @@ function suggestCountry() {
 }
 
 function showSuggestLabel() {
-  $("suggest-label").textContent = "Recommend one in " + suggestCountry().name;
+  $("suggest-label").textContent = "Recommend me a restaurant in " + suggestCountry().name;
 }
 
 function suggestionBox(html) {
