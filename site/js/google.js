@@ -15,10 +15,13 @@ import { readSetting, writeSetting } from "./store.js";
 
 // Free monthly usage per type. Place Details is billed at the Enterprise tier
 // because it asks for hours, phone, website, price and rating.
-export const FREE_MONTHLY = { details: 1000, autocomplete: 10000, map_load: 10000 };
-export const LIMITS = { details: 900, autocomplete: 9000, map_load: 9000 };
-const LABELS = { details: "Place details", autocomplete: "Search suggestions", map_load: "Map loads" };
-const KINDS = ["details", "autocomplete", "map_load"];
+export const FREE_MONTHLY = { details: 1000, autocomplete: 10000, map_load: 10000, suggest: 5000 };
+export const LIMITS = { details: 900, autocomplete: 9000, map_load: 9000, suggest: 4500 };
+const LABELS = {
+  details: "Place details", autocomplete: "Search suggestions", map_load: "Map loads",
+  suggest: "Recommendations",
+};
+const KINDS = ["details", "autocomplete", "map_load", "suggest"];
 
 // Only Essentials/Pro/Enterprise fields. Anything from the "Atmosphere" group
 // (reviews, serves_*, dine_in...) would move every lookup to a pricier SKU.
@@ -354,6 +357,30 @@ export async function autocomplete(query, session, country) {
   });
   // Google suggests streets, towns and shops too; only places to eat or drink stay.
   return places.filter((place) => place.is_food);
+}
+
+// Only Pro-tier fields: a rating or a price here would move the whole search to
+// the priciest tier, and Google's own ranking already puts the well-known
+// places first. The rating arrives with the details of the one that's picked.
+const SUGGEST_FIELDS = [
+  "places.id", "places.displayName", "places.formattedAddress", "places.shortFormattedAddress",
+  "places.addressComponents", "places.location", "places.primaryType", "places.types",
+].join(",");
+
+/** Well-known restaurants in a country, for "recommend me one". */
+export async function suggestPlaces(country, where) {
+  const key = googleKey();
+  if (!key) throw new GoogleError("No Google API key is set.", false);
+  const body = {
+    textQuery: "popular restaurants in " + (where || "Israel"),
+    languageCode: "en",
+    regionCode: country || "il",
+    includedType: "restaurant",
+    pageSize: 20,
+  };
+  const raw = await billedCall("suggest", "POST", "/places:searchText", key,
+    { body, fieldMask: SUGGEST_FIELDS });
+  return (raw.places || []).map(normalizeDetails).filter((place) => place.is_food);
 }
 
 export async function placeDetails(placeId, session, country) {

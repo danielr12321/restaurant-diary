@@ -541,6 +541,29 @@ select {
 }
 .result.is-loading { opacity: .6; cursor: progress; }
 
+/* ---------- Recommend one ---------- */
+
+.suggest-row { display: flex; justify-content: flex-end; margin-top: var(--space-2); }
+.suggest-row .icon { color: var(--color-accent); }
+
+.suggestion {
+  margin-top: var(--space-3); padding: var(--space-4);
+  background: var(--color-card); border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+}
+.suggestion h3 { font-size: 20px; margin-top: var(--space-1); overflow-wrap: anywhere; }
+.suggestion-head {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--color-accent);
+}
+.suggestion-where {
+  margin: var(--space-1) 0 0; font-size: 14px; color: var(--color-muted-foreground);
+  text-transform: capitalize;
+}
+.suggestion-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+.suggestion .menu-message, .suggestion .menu-status, .suggestion .menu-error { margin: 0; }
+
 .share-source {
   display: flex; gap: var(--space-2); align-items: flex-start;
   margin-bottom: var(--space-3); padding: var(--space-3);

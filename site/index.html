@@ -61,6 +61,7 @@
   <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></symbol>
   <symbol id="i-smartphone" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M10 3.5 12 8.5 17 10.5 12 12.5 10 17.5 8 12.5 3 10.5 8 8.5Z"/><path d="M18 3.5 18.8 5.7 21 6.5 18.8 7.3 18 9.5 17.2 7.3 15 6.5 17.2 5.7Z"/><path d="M17.5 15 18.2 16.8 20 17.5 18.2 18.2 17.5 20 16.8 18.2 15 17.5 16.8 16.8Z"/></symbol>
 </svg>
 
 <header class="site-header">
@@ -272,6 +273,13 @@
             <span class="spinner" id="search-spinner" hidden></span>
           </div>
         </div>
+        <div class="suggest-row">
+          <button type="button" class="btn btn-ghost btn-sm" id="suggest-btn">
+            <svg class="icon" aria-hidden="true"><use href="#i-sparkle"/></svg>
+            <span id="suggest-label">Recommend one</span>
+          </button>
+        </div>
+        <div class="suggestion" id="suggestion" role="status" hidden></div>
         <p class="search-notice" id="search-notice" role="status" hidden></p>
         <ul class="results" id="results" role="listbox" aria-label="Search results"></ul>
         <p class="search-credit" id="search-credit" hidden>Results from Google Maps</p>

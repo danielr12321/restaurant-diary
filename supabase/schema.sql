@@ -47,10 +47,16 @@ create index if not exists diary_restaurants_changed_idx on public.diary_restaur
 create table if not exists public.diary_usage (
   diary_id uuid not null references public.diaries (id) on delete cascade,
   month text not null,
-  kind text not null check (kind in ('details', 'autocomplete', 'map_load')),
+  kind text not null,
   used integer not null default 0,
   primary key (diary_id, month, kind)
 );
+
+-- Kinds are listed here rather than in the table above, so running this file
+-- again adds a new one (recommendations came later) to a diary already in use.
+alter table public.diary_usage drop constraint if exists diary_usage_kind_check;
+alter table public.diary_usage add constraint diary_usage_kind_check
+  check (kind in ('details', 'autocomplete', 'map_load', 'suggest'));
 
 alter table public.diaries enable row level security;
 alter table public.diary_members enable row level security;
@@ -143,7 +149,12 @@ $$;
 create or replace function public.google_limit(what text)
 returns integer language sql immutable as $$
   -- 90% of Google's free monthly usage for each kind of request
-  select case what when 'details' then 900 when 'autocomplete' then 9000 when 'map_load' then 9000 end;
+  select case what
+    when 'details' then 900        -- Place Details (Enterprise), 1,000 free
+    when 'autocomplete' then 9000  -- Autocomplete (Essentials), 10,000 free
+    when 'map_load' then 9000      -- Dynamic Maps, 10,000 free
+    when 'suggest' then 4500       -- Text Search (Pro), 5,000 free
+  end;
 $$;
 
 create or replace function public.google_usage(target uuid)

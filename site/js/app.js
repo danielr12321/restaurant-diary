@@ -11,12 +11,14 @@ import {
 } from "./cloud.js";
 import {
   googleStatus, saveGoogleKey, deviceUsage, hasRoom, limitMessage, autocomplete, placeDetails,
-  LimitReached,
+  suggestPlaces, LimitReached,
 } from "./google.js";
 import { searchFreePlaces } from "./osm.js";
 import { createMapView } from "./map.js";
 
 const DAY_KEYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+// Where the diary lives, used when no country is chosen for a search.
+const HOME_COUNTRY = "il";
 
 const PHONE = window.matchMedia("(max-width: 720px)");
 
@@ -53,6 +55,7 @@ const state = {
   searchSession: "",
   choosing: false,
   sharedLink: "",
+  suggested: null,
   searchCountry: readSetting("search-country", ""),
 };
 
@@ -1443,6 +1446,8 @@ function setSearchCountry(code) {
   state.searchCountry = /^[a-z]{2}$/.test(code || "") ? code : "";
   writeSetting("search-country", state.searchCountry || null);
   showSearchCountry();
+  showSuggestLabel();
+  suggestionBox("");
   const query = $("place-search").value.trim();
   if (query.length >= 3) runSearch(query);
 }
@@ -1474,13 +1479,107 @@ function resetAddModal() {
   setSearchNotice("");
   $("search-credit").hidden = true;
   state.sharedLink = "";
+  state.suggested = null;
   showSharedSource("");
+  suggestionBox("");
+  showSuggestLabel();
   clearDraftPhotos();
 }
 
 function setSearchNotice(text) {
   $("search-notice").textContent = text;
   $("search-notice").hidden = !text;
+}
+
+/* ---------- recommend one ----------
+   For the evenings with no idea where to go: a well-known place in the country
+   the add screen is set to, that isn't in the diary yet. One search covers a
+   whole run of suggestions, so tapping "another one" costs Google nothing. */
+
+const suggestions = new Map(); // country -> { at, places, next }
+const SUGGEST_AGE = 7 * 24 * 3600e3;
+
+function suggestCountry() {
+  const code = state.searchCountry || HOME_COUNTRY;
+  return { code, name: countryName(code) };
+}
+
+function showSuggestLabel() {
+  $("suggest-label").textContent = "Recommend one in " + suggestCountry().name;
+}
+
+function suggestionBox(html) {
+  $("suggestion").innerHTML = html;
+  $("suggestion").hidden = !html;
+}
+
+function nextSuggestion(country) {
+  const saved = suggestions.get(country);
+  if (!saved) return null;
+  // Places already in the diary are skipped.
+  for (let tries = 0; tries < saved.places.length; tries += 1) {
+    const place = saved.places[saved.next % saved.places.length];
+    saved.next += 1;
+    if (!findDuplicates(place).length) return place;
+  }
+  return null;
+}
+
+function showSuggestion(place, where) {
+  if (!place) {
+    suggestionBox('<p class="menu-message">No more ideas for ' + esc(where) +
+      " right now — everything found is already in your diary. Try another country, or search by name.</p>");
+    return;
+  }
+  state.suggested = place;
+  const kind = (place.place_type || "restaurant").replace(/_/g, " ");
+  suggestionBox('<div class="suggestion-head">' + icon("sparkle") +
+    "<span>Well known in " + esc(where) + "</span></div>" +
+    "<h3>" + esc(place.name) + "</h3>" +
+    '<p class="suggestion-where">' + esc([kind, place.full_address || place.address].filter(Boolean).join(" · ")) +
+    "</p>" +
+    '<div class="suggestion-actions">' +
+    '<button type="button" class="btn btn-primary btn-sm" data-suggest="take">' + icon("plus") +
+    "Add this one</button>" +
+    '<button type="button" class="btn btn-ghost btn-sm" data-suggest="next">' + icon("refresh") +
+    "Another one</button></div>");
+}
+
+async function recommend(again) {
+  const { code, name } = suggestCountry();
+  if (!googleStatus().configured) {
+    suggestionBox('<p class="menu-message">Recommendations come from Google Maps. Connect it in ' +
+      "Settings (the gear at the top) and this will work.</p>");
+    return;
+  }
+  const saved = suggestions.get(code);
+  if (saved && Date.now() - saved.at < SUGGEST_AGE) {
+    showSuggestion(nextSuggestion(code), name);
+    return;
+  }
+
+  suggestionBox('<p class="menu-status">' + spinnerMarkup() + "Looking for a good place in " +
+    esc(name) + "…</p>");
+  try {
+    const places = await suggestPlaces(code, name);
+    if (!places.length) {
+      suggestionBox('<p class="menu-message">Google had no restaurants to suggest for ' + esc(name) +
+        ".</p>");
+      return;
+    }
+    // Google's order puts the best known first; a little shuffle among the top
+    // ones keeps the answer from being the same place every evening.
+    const top = places.slice(0, 12).sort(() => Math.random() - 0.5).concat(places.slice(12));
+    suggestions.set(code, { at: Date.now(), places: top, next: 0 });
+    applyGoogleStatus();
+    showSuggestion(nextSuggestion(code), name);
+  } catch (err) {
+    suggestionBox('<p class="menu-error">' + esc(err.message) +
+      (/unknown request kind|violates check constraint|invalid usage/i.test(err.message)
+        ? " Run supabase/schema.sql once more so the diary counts recommendations too." : "") + "</p>");
+    applyGoogleStatus();
+  }
+  if (again) $("suggest-btn").focus();
 }
 
 /* ---------- a reel shared from Instagram ----------
@@ -2560,6 +2659,18 @@ $("results-empty").addEventListener("click", (event) => {
   showConfirm({ manual: true, name: $("place-search").value.trim(), city: "" });
 });
 
+$("suggest-btn").addEventListener("click", () => recommend(false));
+$("suggestion").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-suggest]");
+  if (!button) return;
+  if (button.dataset.suggest === "next") {
+    recommend(true);
+    return;
+  }
+  const place = state.suggested;
+  if (place) choosePlace({ ...place, needs_details: true }, null);
+});
+
 $("share-source").addEventListener("click", (event) => {
   const pick = event.target.closest("[data-search]");
   if (!pick) return;
@@ -2916,6 +3027,7 @@ if ("serviceWorker" in navigator && !IS_LOCAL) {
 
 buildCountryOptions();
 showSearchCountry();
+showSuggestLabel();
 applyGoogleStatus();
 renderShareButton();
 setView(state.view);
