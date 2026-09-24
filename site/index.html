@@ -252,7 +252,8 @@
 
     <div class="modal-body">
       <div id="step-search">
-        <p class="hint">Pick a country, then type the name — add the city if it's a common one.
+        <div class="share-source" id="share-source" hidden></div>
+        <p class="hint" id="add-hint">Pick a country, then type the name — add the city if it's a common one.
           The address, hours and cuisine are filled in for you.</p>
         <div class="search-row">
           <label class="chip chip-select country-chip" id="country-wrap" title="Only search in this country">
@@ -468,6 +469,11 @@
         <input type="text" id="d-website" inputmode="url" autocomplete="off" spellcheck="false"
                placeholder="restaurant.co.il">
         <span class="field-help">The menu is searched on this site.</span>
+      </div>
+      <div class="field">
+        <label class="field-label" for="d-source">Link you saved it from <span class="optional">(optional)</span></label>
+        <input type="text" id="d-source" inputmode="url" autocomplete="off" spellcheck="false"
+               placeholder="instagram.com/reel/…">
       </div>
       <div class="field" id="d-note-field">
         <label class="field-label" for="d-note">Why this one?</label>

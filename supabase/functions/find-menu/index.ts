@@ -985,6 +985,112 @@ export async function findMenu(website: string, menuUrl: string, resolve: Resolv
   return finish(result);
 }
 
+// ---------- a link shared from Instagram (or anywhere else) ----------
+
+function ogTag(html: string, property: string): string {
+  const quoted = '["\']og:' + property + '["\']';
+  const after = new RegExp("<meta[^>]+property=" + quoted + "[^>]*content=[\"']([^\"']*)[\"']", "i");
+  const before = new RegExp("<meta[^>]+content=[\"']([^\"']*)[\"'][^>]+property=" + quoted, "i");
+  const match = after.exec(html) || before.exec(html);
+  return match ? unescapeHtml(match[1]) : "";
+}
+
+const IG_NON_ACCOUNT = ["reel", "reels", "p", "tv", "share", "explore", "stories", "s"];
+// Instagram wraps names in text-direction marks, which would show as stray characters.
+const BIDI = new RegExp("[" + [0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E,
+  0x2066, 0x2067, 0x2068, 0x2069].map((code) => String.fromCharCode(code)).join("") + "]", "g");
+const MENTION_RE = /@([a-z0-9._]{2,30})/gi;
+
+/** "Tel Aviv Eats (@telaviv_eats) • Instagram photos and videos" -> "Tel Aviv Eats" */
+function accountName(title: string): string {
+  return title.replace(BIDI, "").split("(@")[0].trim();
+}
+
+/** The post's own words: `Name on Instagram: "the caption"`. */
+function captionOf(title: string): string {
+  const clean = title.replace(BIDI, "").trim();
+  const open = clean.search(/["“]/);
+  const close = Math.max(clean.lastIndexOf('"'), clean.lastIndexOf("”"));
+  return open >= 0 && close > open ? clean.slice(open + 1, close).trim() : "";
+}
+
+async function instagramName(handle: string, ctx: Context): Promise<string> {
+  try {
+    const profile = await fetchPage("https://www.instagram.com/" + encodeURIComponent(handle) + "/", ctx);
+    return accountName(ogTag(decodeBody(profile.body, profile.contentType), "title"));
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * What a shared link says about the place, without anybody signing in.
+ *
+ * Instagram no longer shows a post's caption to anyone who isn't logged in, but
+ * a reel's address still names the account that posted it, and that account's
+ * page gives its name — which, for a restaurant's own account, is the name to
+ * look up. Other links (a map link, the restaurant's own site) give their title.
+ */
+async function readLink(link: string, ctx: Context) {
+  const page = await fetchPage(link, ctx);
+  const html = decodeBody(page.body, page.contentType);
+  const canonical = ogTag(html, "url") || page.finalUrl;
+  const result: Record<string, string> = {
+    url: canonical,
+    site: ogTag(html, "site_name"),
+    title: ogTag(html, "title").replace(BIDI, ""),
+    description: ogTag(html, "description").replace(BIDI, "").slice(0, 300),
+    caption: "",
+    handle: "",
+    name: "",
+    profile: "",
+  };
+
+  let parts: string[] = [];
+  let host = "";
+  try {
+    const parsed = new URL(canonical);
+    host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    parts = parsed.pathname.split("/").filter(Boolean).map((part) => unquote(part));
+  } catch {
+    return result;
+  }
+
+  if (host.endsWith("instagram.com") || host.endsWith("instagr.am")) {
+    const caption = captionOf(result.title);
+    result.caption = caption;
+    if (parts.length && !IG_NON_ACCOUNT.includes(parts[0].toLowerCase())) {
+      result.handle = parts[0];
+      result.profile = "https://www.instagram.com/" + encodeURIComponent(result.handle) + "/";
+      result.name = await instagramName(result.handle, ctx);
+    }
+    // A food account's reel usually tags the restaurants it's about.
+    const tagged: string[] = [];
+    for (const match of caption.matchAll(MENTION_RE)) {
+      const handle = match[1].toLowerCase().replace(/\.$/, "");
+      if (handle !== result.handle.toLowerCase() && !tagged.includes(handle)) tagged.push(handle);
+    }
+    const places = [];
+    for (const handle of tagged.slice(0, 3)) {
+      if (Date.now() > ctx.deadline) break;
+      places.push({
+        handle,
+        name: await instagramName(handle, ctx),
+        profile: "https://www.instagram.com/" + encodeURIComponent(handle) + "/",
+      });
+    }
+    return { ...result, places };
+  }
+  // A Google Maps link carries the place's name in its address.
+  if (host.endsWith("google.com") || host.endsWith("google.co.il") || host.endsWith("goo.gl")) {
+    const at = parts.indexOf("place");
+    if (at >= 0 && parts[at + 1]) result.name = parts[at + 1].replace(/\+/g, " ");
+    return result;
+  }
+  if (!result.name && result.title) result.name = result.title.split("|")[0].split(" - ")[0].trim();
+  return result;
+}
+
 // ---------- the Edge Function ----------
 
 const CORS = {
@@ -1049,8 +1155,14 @@ export async function handle(request: Request, resolve: Resolver = denoResolve, 
   let pasted = String(payload?.url || "").trim();
   if (pasted && !/^https?:\/\//i.test(pasted)) pasted = "https://" + pasted;
   const website = String(payload?.website || "").trim();
+  // A link shared from Instagram: say what it is, rather than look for a menu.
+  const shared = String(payload?.link || "").trim();
 
   try {
+    if (shared) {
+      const ctx: Context = { resolve, deadline: Date.now() + TIME_BUDGET_MS };
+      return reply({ link: await readLink(/^https?:\/\//i.test(shared) ? shared : "https://" + shared, ctx) });
+    }
     return reply({ menu: await findMenu(website, pasted, resolve) });
   } catch (err) {
     if (err instanceof MenuError) return reply({ error: err.message }, 422);

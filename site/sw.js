@@ -69,6 +69,15 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
 
+  // Sharing a reel to the diary lands here (see share_target in the manifest);
+  // hand the link to the page itself.
+  if (url.origin === self.location.origin && url.pathname.endsWith("/share")) {
+    const target = new URL("./", self.registration.scope);
+    target.search = url.search;
+    event.respondWith(Response.redirect(target.href, 303));
+    return;
+  }
+
   if (url.origin === self.location.origin) {
     // The restaurant index is big and changes rarely: cached the first time it's used.
     if (url.pathname.endsWith("/data/il-places.json")) event.respondWith(staleWhileRevalidate(request));

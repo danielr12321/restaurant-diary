@@ -7,7 +7,7 @@ import {
 } from "./store.js";
 import {
   cloud, startCloud, syncNow, shareDiary, joinDiary, leaveDiary, refreshUsage,
-  photoPath, photoLinks, findMenuOnline,
+  photoPath, photoLinks, findMenuOnline, readSharedLink,
 } from "./cloud.js";
 import {
   googleStatus, saveGoogleKey, deviceUsage, hasRoom, limitMessage, autocomplete, placeDetails,
@@ -52,6 +52,7 @@ const state = {
   google: null,
   searchSession: "",
   choosing: false,
+  sharedLink: "",
   searchCountry: readSetting("search-country", ""),
 };
 
@@ -459,7 +460,24 @@ function detailsMarkup(item) {
     html += '<div class="meta-row">' + icon("crosshair") +
       "<span>" + esc(formatDistance(km)) + "</span></div>";
   }
-  return html + menuRowMarkup(item) + "</div>";
+  html += menuRowMarkup(item);
+  const source = safeUrl(item.source_url);
+  if (source) {
+    html += '<div class="meta-row">' + icon("share") +
+      '<span><a href="' + esc(source) + '" target="_blank" rel="noopener noreferrer">' +
+      esc(sourceLabel(source)) + "</a></span></div>";
+  }
+  return html + "</div>";
+}
+
+// Where a place was saved from, for the line on the card.
+function sourceLabel(url) {
+  const host = hostOf(url);
+  if (host.endsWith("instagram.com")) return "Seen on Instagram";
+  if (host.endsWith("tiktok.com")) return "Seen on TikTok";
+  if (host.endsWith("facebook.com")) return "Seen on Facebook";
+  if (host.endsWith("youtube.com") || host === "youtu.be") return "Seen on YouTube";
+  return "Seen on " + host;
 }
 
 function notesMarkup(item) {
@@ -1455,12 +1473,86 @@ function resetAddModal() {
   $("place-search").setAttribute("aria-expanded", "false");
   setSearchNotice("");
   $("search-credit").hidden = true;
+  state.sharedLink = "";
+  showSharedSource("");
   clearDraftPhotos();
 }
 
 function setSearchNotice(text) {
   $("search-notice").textContent = text;
   $("search-notice").hidden = !text;
+}
+
+/* ---------- a reel shared from Instagram ----------
+   Instagram won't tell anyone who isn't logged in what a reel says, but the
+   link does name the account that posted it. When that account is the
+   restaurant's own, its name is enough to look the place up; when it's a food
+   account, the search is simply left open and ready. */
+
+function showSharedSource(html) {
+  $("share-source").innerHTML = html;
+  $("share-source").hidden = !html;
+  $("add-hint").hidden = !!html;
+}
+
+function sharedBox(who, inner) {
+  showSharedSource(icon("share") + "<div><strong>Saved from " + esc(who) + "</strong>" + inner + "</div>");
+}
+
+function searchFor(name) {
+  $("place-search").value = name;
+  runSearch(name);
+}
+
+async function startFromShare(link) {
+  openAdd();
+  state.sharedLink = link;
+  const site = hostOf(link).endsWith("instagram.com") ? "Instagram" : hostOf(link);
+  sharedBox(site, '<p class="menu-status">' + spinnerMarkup() + "Reading the link…</p>");
+
+  let info = null;
+  try {
+    info = await readSharedLink(link);
+  } catch (err) {
+    sharedBox(site, "<p>Couldn't read the link (" + esc(err.message) + "). Type the restaurant's name " +
+      "below — the link is kept with whatever you save.</p>");
+    return;
+  }
+
+  state.sharedLink = info.url || link;
+  const who = info.handle ? "@" + info.handle : site;
+  const headline = (info.caption || "").split("\n")[0].trim();
+  const quote = headline ? '<p class="share-caption">“' + esc(headline.slice(0, 140)) + "”</p>" : "";
+  // Restaurants tagged in the reel first; otherwise the account that posted it.
+  const tagged = (info.places || []).filter((place) => place.name || place.handle);
+
+  if (tagged.length > 1) {
+    sharedBox(who, quote + "<p>Which one?</p><div class=\"share-picks\">" + tagged.map((place) =>
+      '<button type="button" class="chip" data-search="' + esc(place.name || place.handle) + '">' +
+      esc(place.name || "@" + place.handle) + "</button>").join("") + "</div>");
+    return;
+  }
+
+  const name = tagged.length ? (tagged[0].name || tagged[0].handle) : (info.name || "").trim();
+  if (name) {
+    sharedBox(who, quote + "<p>Looking for <strong>" + esc(name) + "</strong> — tap it below to save it, " +
+      "or type another name if the reel was about somewhere else.</p>");
+    searchFor(name);
+    return;
+  }
+  sharedBox(who, quote + "<p>Instagram doesn't say which place this is about, so type its name below. " +
+    "The link is kept with whatever you save.</p>");
+}
+
+/** A link shared into the diary, from the share sheet or a pasted address. */
+function sharedFromAddress() {
+  const params = new URLSearchParams(location.search);
+  const raw = [params.get("url"), params.get("text"), params.get("title")].filter(Boolean).join(" ");
+  if (!raw) return "";
+  // Address bars are for the diary, not for the last thing shared into it.
+  history.replaceState({}, "", location.pathname);
+  const found = raw.match(/https?:\/\/[^\s]+/);
+  return found ? found[0] : "";
 }
 
 function openAdd() {
@@ -1745,6 +1837,7 @@ async function savePlace() {
     google_rating_count: place.google_rating_count || 0,
     google_maps_uri: place.google_maps_uri || "",
     price: state.draftPrice,
+    source_url: state.sharedLink || "",
     source: place.google_place_id ? "google" : place.osm_id ? "osm" : "manual",
     added_at: nowIso(),
     dishes: [],
@@ -1864,7 +1957,7 @@ function removeItem(id) {
 const DETAIL_FIELDS = {
   "d-name": "name", "d-local": "local_name", "d-address": "address", "d-city": "city",
   "d-cuisine": "cuisine", "d-hours": "opening_hours", "d-phone": "phone", "d-website": "website",
-  "d-note": "wish_note",
+  "d-note": "wish_note", "d-source": "source_url",
 };
 
 let detailsId = null;
@@ -1954,8 +2047,16 @@ function saveDetails() {
     return;
   }
 
+  let source = $("d-source").value.trim();
+  if (source && !/^https?:\/\//i.test(source)) source = "https://" + source;
+  if (source && !safeUrl(source)) {
+    detailsError("That link doesn't look right.", "d-source");
+    return;
+  }
+
   const status = detailsStatus();
   const changes = {
+    source_url: source,
     name,
     local_name: $("d-local").value.trim(),
     address: $("d-address").value.trim(),
@@ -2459,6 +2560,15 @@ $("results-empty").addEventListener("click", (event) => {
   showConfirm({ manual: true, name: $("place-search").value.trim(), city: "" });
 });
 
+$("share-source").addEventListener("click", (event) => {
+  const pick = event.target.closest("[data-search]");
+  if (!pick) return;
+  $("share-source").querySelectorAll("[data-search]").forEach((chip) => {
+    chip.classList.toggle("is-on", chip === pick);
+  });
+  searchFor(pick.dataset.search);
+});
+
 $("search-country").addEventListener("change", (event) => {
   setSearchCountry(event.target.value);
   $("place-search").focus();
@@ -2811,3 +2921,6 @@ renderShareButton();
 setView(state.view);
 render(true);
 startCloud().catch((err) => console.warn("Sharing unavailable:", err));
+
+const sharedLink = sharedFromAddress();
+if (sharedLink) startFromShare(sharedLink);

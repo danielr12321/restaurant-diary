@@ -478,7 +478,7 @@ export async function photoLinks(paths) {
 
 /* ---------- menu finder ---------- */
 
-export async function findMenuOnline(website, url) {
+async function callMenuFunction(body) {
   const headers = { "Content-Type": "application/json", apikey: SUPABASE_KEY };
   if (!MENU_FUNCTION_IS_LOCAL) {
     const session = await ensureSession();
@@ -486,11 +486,9 @@ export async function findMenuOnline(website, url) {
   }
   let response;
   try {
-    response = await fetch(MENU_FUNCTION_URL, {
-      method: "POST", headers, body: JSON.stringify({ website: website || "", url: url || "" }),
-    });
+    response = await fetch(MENU_FUNCTION_URL, { method: "POST", headers, body: JSON.stringify(body) });
   } catch (err) {
-    throw new Error("Can't reach the menu finder. Check your internet connection.");
+    throw new Error("Can't reach the diary's helper. Check your internet connection.");
   }
   let data = {};
   try {
@@ -499,10 +497,23 @@ export async function findMenuOnline(website, url) {
     /* empty body */
   }
   if (response.status === 404 && !data.error) {
-    throw new Error("The menu finder isn't set up in Supabase yet (Edge Function “find-menu”).");
+    throw new Error("The diary's helper isn't set up in Supabase yet (Edge Function “find-menu”).");
   }
-  if (!response.ok || !data.menu) {
-    throw new Error(data.error || data.message || data.msg || "The menu finder failed (" + response.status + ").");
+  if (!response.ok) {
+    throw new Error(data.error || data.message || data.msg || "That didn't work (" + response.status + ").");
   }
+  return data;
+}
+
+export async function findMenuOnline(website, url) {
+  const data = await callMenuFunction({ website: website || "", url: url || "" });
+  if (!data.menu) throw new Error(data.error || "The menu finder failed.");
   return data.menu;
+}
+
+/** What a link shared from Instagram (or anywhere) says about the place. */
+export async function readSharedLink(link) {
+  const data = await callMenuFunction({ link });
+  if (!data.link) throw new Error(data.error || "That link couldn't be read.");
+  return data.link;
 }
