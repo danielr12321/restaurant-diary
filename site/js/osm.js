@@ -54,13 +54,43 @@ function loadIndex() {
 const GENERIC_WORDS = /\b(restaurant|ristorante|cafe|caffe|coffee|bar|bistro|pizza|the|and)\b/g;
 const GENERIC_HEBREW = /(^|\s)(מסעדת|מסעדה|קפה|בית קפה|פיצה)(?=\s|$)/g;
 
+function plainName(name) {
+  return String(name || "").toLowerCase()
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[\u0591-\u05c7]/g, "")
+    .replace(/['"\u05f4\u05f3`\u2019.,!?&()\-\u2013\u2014_/:]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function brandOf(name) {
+  return plainName(name).replace(GENERIC_WORDS, " ").replace(GENERIC_HEBREW, " ").replace(/\s+/g, " ").trim();
+}
+
 /** The name two branches of one chain share, or "" if there isn't one. */
 export function chainKey(name) {
-  const base = String(name || "").toLowerCase()
-    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[\u0591-\u05c7]/g, "")
-    .replace(/['"\u05f4\u05f3`\u2019.,!?&()\-\u2013\u2014_/:]+/g, " ");
-  const stripped = base.replace(GENERIC_WORDS, " ").replace(GENERIC_HEBREW, " ");
-  return stripped.replace(/\s+/g, " ").trim() || base.replace(/\s+/g, " ").trim();
+  return brandOf(name) || plainName(name);
+}
+
+/**
+ * The ways one listing can name its chain, each with the key it matches on:
+ * the whole name, the brand before a dash (Google's "Pizza X - Neapolitan
+ * pizza, Dizengoff"), and the brand in English inside a Hebrew name. Two
+ * entries sharing any key are branches of one chain. A generic word on its own
+ * ("Pizza", "Cafe") is no brand, and "Pizza X" is more than its "x".
+ */
+export function chainNameParts(name) {
+  const text = String(name || "").trim();
+  const parts = [text];
+  const head = text.split(/\s+[-–—|·:]\s+|,\s+/)[0].trim();
+  if (head && head !== text) parts.push(head);
+  if (/[א-ת]/.test(text)) {
+    (text.match(/[A-Za-z][A-Za-z0-9'&.]*(?:\s+[A-Za-z0-9'&.]+)*/g) || []).forEach((run) => parts.push(run.trim()));
+  }
+  const found = [];
+  parts.forEach((part) => {
+    const brand = brandOf(part);
+    const key = brand.length >= 3 ? brand : brand ? plainName(part) : "";
+    if (key.length >= 3 && !found.some((known) => known.key === key)) found.push({ text: part, key });
+  });
+  return found;
 }
 
 function branchOf(place) {

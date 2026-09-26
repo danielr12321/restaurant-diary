@@ -13,7 +13,7 @@ import {
   googleStatus, saveGoogleKey, deviceUsage, hasRoom, limitMessage, autocomplete, placeDetails,
   suggestPlaces, findBranchesOnline, LimitReached,
 } from "./google.js";
-import { searchFreePlaces, findBranches, chainKey, geocode, reverseGeocode } from "./osm.js";
+import { searchFreePlaces, findBranches, chainKey, chainNameParts, geocode, reverseGeocode } from "./osm.js";
 import { createMapView, loadLeaflet } from "./map.js";
 
 const DAY_KEYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
@@ -1478,12 +1478,22 @@ function listName(item) {
    of one chain. The diary offers to keep them as a single entry, both when the
    second one is added and for pairs that are already saved apart. */
 
-const chainKeys = new Map();
+const nameParts = new Map();
+function partsOf(name) {
+  if (!nameParts.has(name)) nameParts.set(name, chainNameParts(name));
+  return nameParts.get(name);
+}
+
 function chainNames(place) {
-  return [place.name, place.local_name].filter(Boolean).map((name) => {
-    if (!chainKeys.has(name)) chainKeys.set(name, chainKey(name));
-    return chainKeys.get(name);
-  }).filter(Boolean);
+  return [place.name, place.local_name].filter(Boolean)
+    .flatMap((name) => partsOf(name).map((part) => part.key));
+}
+
+/** What the joined entry is called: the part of the name both listings share. */
+function chainTitle(item, other) {
+  const theirs = new Set(chainNames(other));
+  const shared = partsOf(item.name || "").find((part) => theirs.has(part.key));
+  return shared ? shared.text : item.name;
 }
 
 /** Other entries that look like branches of the same chain as `place`. */
@@ -1516,6 +1526,10 @@ function mergedChanges(into, other) {
     if (!branches.some((known) => sameIds(branch, known) || samePlace(branch, known))) branches.push(branch);
   });
   const changes = { chain: true, branches, branches_at: into.branches_at || nowIso() };
+  // "Pizza X - Neapolitan, Dizengoff" and "Pizza X - Rishon" become "Pizza X";
+  // each branch keeps its own full name.
+  const title = chainTitle(into, other);
+  if (title && title !== into.name) changes.name = title;
   // Nothing either one says is lost: been to one branch is been to the chain.
   if (other.status === "visited" && into.status !== "visited") {
     changes.status = "visited";
@@ -1548,7 +1562,7 @@ function mergeChain(id) {
   }
   const keep = withPhotos[0] || group.find((i) => i.chain) || group.find((i) => i.status === "visited") || item;
   const others = group.filter((i) => i !== keep);
-  if (!window.confirm("Make " + keep.name + " one entry with all " + group.length + " branches? " +
+  if (!window.confirm("Make " + chainTitle(keep, others[0]) + " one entry with all " + group.length + " branches? " +
       "Notes, reviews and ratings from each are kept on it.")) {
     return;
   }
@@ -1565,7 +1579,7 @@ function mergeChain(id) {
   state.tab = merged.status;
   syncTabs();
   render();
-  toast(keep.name + " is one entry now, with " + merged.branches.length + " branches.");
+  toast(merged.name + " is one entry now, with " + merged.branches.length + " branches.");
 }
 
 /** "These just share a name": stop offering to join them. */
@@ -2467,7 +2481,7 @@ function showConfirm(place) {
     const mate = state.chainWith;
     const count = branchesFor(mate).length + 1;
     $("branch-check").checked = !mate.chain_apart;
-    $("branch-title").textContent = "Add as another branch of " + mate.name;
+    $("branch-title").textContent = "Add as another branch of " + chainTitle(mate, place);
     $("branch-help").textContent = mate.name + " is already in " + listName(mate) +
       (mate.chain ? " with " + branchesFor(mate).length + " branches"
         : " (" + (mate.address || mate.city || "another address") + ")") +
@@ -2651,7 +2665,7 @@ async function saveAsBranch(mate, item) {
   state.tab = changes.status || mate.status;
   syncTabs();
   if (upload && upload.failures.length) reportUpload(upload);
-  else toast(mate.name + " now has " + changes.branches.length + " branches in one entry.");
+  else toast((changes.name || mate.name) + " now has " + changes.branches.length + " branches in one entry.");
 }
 
 /* ---------- review modal ---------- */
