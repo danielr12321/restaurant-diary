@@ -21,7 +21,7 @@ const TIME_BUDGET_MS = 30_000; // for one whole search, however many pages it op
 const MAX_BYTES = 3 * 1024 * 1024;
 const MAX_ITEMS = 150;
 // Saved with each result, so menus found by an older, weaker search get re-checked.
-export const FINDER_VERSION = 2;
+export const FINDER_VERSION = 3;
 
 const MENU_WORDS = ["menu", "תפריט", "carte", "speisekarte", "menù", "carta"];
 const FOOD_WORDS = ["food", "dishes", "אוכל", "מנות", "our kitchen"];
@@ -37,14 +37,15 @@ const PLATFORMS: [string, string, boolean | null][] = [
   ["facebook.com", "Facebook page", false],
   ["tiktok.com", "TikTok page", false],
   ["linktr.ee", "Linktree page", false],
-  ["ontopo.com", "Ontopo booking page", false],
-  ["ontopo.co.il", "Ontopo booking page", false],
+  ["ontopo.com", "Ontopo page", true],
+  ["ontopo.co.il", "Ontopo page", true],
   ["google.com", "Google page", false],
   ["goo.gl", "Google link", false],
   ["wolt.com", "Wolt ordering page", true],
   ["10bis.co.il", "10bis ordering page", true],
   ["mishloha.co.il", "Mishloha ordering page", true],
   ["beecommcloud.com", "online-ordering page", true],
+  ["bitetech.co.il", "online-ordering page", true],
   ["tabitisrael.co.il", "Tabit page", null],
 ];
 
@@ -83,7 +84,7 @@ const NOT_A_DISH_RE = new RegExp(
 export class MenuError extends Error {}
 
 type Link = { url: string; label: string };
-type Dish = { name: string; price: string; desc: string };
+type Dish = { name: string; price: string; desc: string; section?: string };
 type Result = {
   url: string; links: Link[]; items: Dish[]; kind: string; finder: number;
   checked_at: string; message: string; platform?: string;
@@ -747,9 +748,76 @@ function dedupe(items: Dish[]): Dish[] {
 type MenuPage = { finalUrl: string; items: Dish[]; kind: string; documents: Link[] };
 
 /** A page believed to be the menu: its dishes, or what kind of menu it is. */
+const ONTOPO = ["ontopo.com", "ontopo.co.il"];
+
+/** The JSON array that starts at `start` (a "["), however deep, strings and all. */
+function jsonArrayAt(text: string, start: number): unknown[] | null {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') {
+      inString = true;
+    } else if (ch === "[") {
+      depth += 1;
+    } else if (ch === "]") {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          const parsed = JSON.parse(text.slice(start, i + 1));
+          return Array.isArray(parsed) ? parsed : null;
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Ontopo booking pages carry the restaurant's menus, section by section with
+ * prices, in the data the page is built from — no need to read the screen.
+ */
+function ontopoMenu(html: string): Dish[] {
+  const marker = '"menus":[';
+  for (let at = html.indexOf(marker); at >= 0; at = html.indexOf(marker, at + marker.length)) {
+    const menus = jsonArrayAt(html, at + marker.length - 1);
+    if (!menus || !menus.length) continue;
+    const items: Dish[] = [];
+    const several = menus.length > 1;
+    for (const menu of menus as Record<string, unknown>[]) {
+      const title = String(menu?.title || "").trim();
+      for (const part of (Array.isArray(menu?.sections) ? menu.sections : []) as Record<string, unknown>[]) {
+        const header = String(part?.header || "").trim();
+        const section = [several ? title : "", header].filter(Boolean).join(" · ");
+        for (const dish of (Array.isArray(part?.items) ? part.items : []) as Record<string, unknown>[]) {
+          const name = squash(String(dish?.name || "")).slice(0, 120);
+          if (!name) continue;
+          const value = dish?.price_value;
+          const price = squash(String(dish?.price_label || dish?.price || "")) ||
+            (typeof value === "number" ? value + " ₪" : "");
+          items.push({ name, price: price.slice(0, 40), desc: squash(String(dish?.description || "")).slice(0, 200), section });
+          if (items.length >= MAX_ITEMS) return items;
+        }
+      }
+    }
+    if (items.length) return items;
+  }
+  return [];
+}
+
 async function readMenuPage(url: string, ctx: Context): Promise<MenuPage> {
   const { finalUrl, contentType, body } = await fetchPage(url, ctx);
   if (isPdf(finalUrl, contentType)) return { finalUrl, items: [], kind: "pdf", documents: [] };
+  if (hostMatches(hostOf(finalUrl), ONTOPO)) {
+    return { finalUrl, items: ontopoMenu(decodeBody(body, contentType)), kind: "page", documents: [] };
+  }
   const page = parse(body, contentType);
   let [items] = jsonldMenu(page);
   if (!items.length) items = priceLines(page.lines);
@@ -855,6 +923,12 @@ async function searchHomepage(website: string, result: Result, ctx: Context): Pr
     Object.assign(result, { url: finalUrl, kind: "pdf" });
     return;
   }
+  // A short link (tbit.be and the like) that lands on a booking or ordering page.
+  const landed = platformOf(finalUrl);
+  if (landed) {
+    await usePlatform(result, finalUrl, landed, ctx);
+    return;
+  }
 
   const homepage = parse(body, contentType);
   const [items, jsonldMenus] = jsonldMenu(homepage);
@@ -875,6 +949,24 @@ async function searchHomepage(website: string, result: Result, ctx: Context): Pr
     return;
   }
   if (links.length && await tryPages(links, result, ctx)) return;
+
+  // Many restaurants keep the menu on their Ontopo booking page and link only
+  // that ("Book a table"): it has the dishes, where their own site may not.
+  if (Date.now() < ctx.deadline) {
+    const booking = absoluteLinks(homepage, finalUrl).map(([url]) => url)
+      .find((url) => hostMatches(hostOf(url), ONTOPO));
+    if (booking) {
+      try {
+        const read = await readMenuPage(booking, ctx);
+        if (read.items.length) {
+          Object.assign(result, { url: read.finalUrl, items: dedupe(read.items), kind: "page", platform: "Ontopo page" });
+          return;
+        }
+      } catch (err) {
+        if (!(err instanceof MenuError)) throw err;
+      }
+    }
+  }
   if (result.url) return;
 
   const documents = documentsOf(homepage, finalUrl, true);
@@ -938,6 +1030,7 @@ async function usePlatform(result: Result, url: string, platform: [string, boole
     if (!(err instanceof MenuError)) throw err;
   }
   if (items.length) Object.assign(result, { url, items: dedupe(items), kind: "page" });
+  else if (hostMatches(hostOf(url), ONTOPO)) result.kind = "profile";
   else Object.assign(result, { url, kind: "platform", links: [{ url, label: name }] });
 }
 

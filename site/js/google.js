@@ -262,6 +262,15 @@ function cuisineOf(primary) {
   return primary.replace(/_restaurant$/, "").replace(/_/g, " ");
 }
 
+/**
+ * The most telling of the types Google lists for a place. Its "primary" type is
+ * often just "restaurant" while the list goes on to "sushi_restaurant".
+ */
+function bestType(types) {
+  return (types || []).find((type) => !GENERIC_TYPES.has(type) && (type.endsWith("_restaurant") ||
+    FOOD_TYPES.has(type) || /_(shop|house)$|^(bistro|diner|gastropub|pub|deli|cafeteria|wine_bar)$/.test(type))) || "";
+}
+
 /** Google's opening periods as the OSM opening_hours text the app reads. */
 export function hoursToOsm(openingHours) {
   const periods = (openingHours && openingHours.periods) || [];
@@ -324,7 +333,7 @@ function normalizeDetails(place) {
     country_code: component(place, "country", "shortText").toLowerCase(),
     lat: location.latitude !== undefined ? String(location.latitude) : "",
     lon: location.longitude !== undefined ? String(location.longitude) : "",
-    cuisine: cuisineOf(place.primaryType),
+    cuisine: cuisineOf(place.primaryType) || cuisineOf(bestType(types)),
     opening_hours: hoursToOsm(place.regularOpeningHours),
     phone: place.nationalPhoneNumber || place.internationalPhoneNumber || "",
     website: place.websiteUri || "",
@@ -333,7 +342,7 @@ function normalizeDetails(place) {
     google_rating: place.rating || 0,
     google_rating_count: place.userRatingCount || 0,
     google_maps_uri: place.googleMapsUri || "",
-    place_type: (place.primaryType || "").replace(/_/g, " "),
+    place_type: (place.primaryType || bestType(types) || "").replace(/_/g, " "),
     is_food: isFood(types.concat([place.primaryType || ""])),
     source: "google",
   };
@@ -423,6 +432,18 @@ function kmBetween(from, to) {
   const dLon = (parseFloat(to.lon) - Number(from.lon)) * rad;
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
   return 12742 * Math.asin(Math.sqrt(h));
+}
+
+/**
+ * What kind of place Google says this is, for places saved without one. Only
+ * the "types" field: the cheapest kind of lookup, counted with place details.
+ */
+export async function placeKind(placeId) {
+  const key = googleKey();
+  if (!key) throw new GoogleError("No Google API key is set.", false);
+  const raw = await billedCall("details", "GET", "/places/" + encodeURIComponent(placeId), key,
+    { fieldMask: "types" });
+  return cuisineOf(bestType(raw.types || []));
 }
 
 export async function placeDetails(placeId, session, country) {

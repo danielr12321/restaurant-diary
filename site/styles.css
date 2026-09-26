@@ -612,21 +612,43 @@ select {
 
 /* The other way into the dialog, so it gets a card of its own rather than a
    link under the search box. The choices are on show, not folded away. */
+/* Second to the search: a quiet one-line card until it's opened, then the
+   warm panel with the choices. */
 .recommend {
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  margin-top: var(--space-3); padding: var(--space-3);
+  margin-top: var(--space-4);
+  background: var(--color-card);
+  border: 1px solid var(--color-border); border-radius: var(--radius);
+  transition: background-color var(--t) var(--ease), border-color var(--t) var(--ease);
+}
+.recommend.is-open {
   background: linear-gradient(180deg, var(--color-accent-soft), var(--c-warm-glow) 70%);
-  border: 1px solid var(--c-warm-line); border-radius: var(--radius-lg);
+  border-color: var(--c-warm-line); border-radius: var(--radius-lg);
 }
-.recommend-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: var(--space-3); }
+.recommend-head {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 12px 14px; border: 0; background: none; border-radius: inherit;
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.recommend-head:focus-visible { outline: 2px solid var(--color-ring); outline-offset: -2px; }
 .recommend-mark {
-  flex: none; display: grid; place-items: center; width: 36px; height: 36px;
-  border-radius: 50%; background: var(--color-card); color: var(--color-accent);
-  box-shadow: 0 0 0 1px var(--c-warm-line), var(--shadow-sm);
+  flex: none; display: grid; place-items: center; width: 32px; height: 32px;
+  border-radius: 50%; background: var(--color-accent-soft); color: var(--color-accent);
 }
-.recommend-mark .icon { width: 18px; height: 18px; }
-.recommend-head h3 { margin: 0; font-size: 17px; line-height: 1.3; }
-.recommend-head p { margin: 2px 0 0; font-size: 13.5px; color: var(--color-muted-foreground); }
+.recommend.is-open .recommend-mark { background: var(--color-card); box-shadow: 0 0 0 1px var(--c-warm-line); }
+.recommend-mark .icon { width: 16px; height: 16px; }
+.recommend-text { flex: 1; min-width: 0; display: grid; }
+.recommend-text strong { font-size: 15px; line-height: 1.3; }
+.recommend-text span { font-size: 13px; color: var(--color-muted-foreground); }
+.recommend-chevron {
+  flex: none; width: 18px; height: 18px; color: var(--color-muted-foreground);
+  transition: transform var(--t) var(--ease);
+}
+.recommend.is-open .recommend-chevron { transform: rotate(180deg); }
+.recommend-body { padding: 4px var(--space-3) var(--space-3); }
+@media (hover: hover) and (pointer: fine) {
+  .recommend:not(.is-open):hover { border-color: var(--c-warm-border); }
+}
 
 .rec-field { margin-bottom: 12px; }
 .rec-label {
@@ -1920,3 +1942,11 @@ select {
 .guide-result .btn { margin-left: 26px; }
 .guide-result.is-good { background: var(--color-success-soft); color: var(--c-success-text); }
 .guide-result.is-bad { background: var(--color-primary-soft); color: var(--c-danger-strong); }
+
+/* A menu's own sections, as the restaurant groups it. */
+.menu-items .menu-section {
+  display: block; position: sticky; top: 0; z-index: 1;
+  padding: 7px var(--space-3); background: var(--color-muted);
+  font-size: 12.5px; font-weight: 700; letter-spacing: .03em; color: var(--c-warm-label);
+  unicode-bidi: plaintext; text-align: start;
+}

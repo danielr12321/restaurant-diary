@@ -11,7 +11,7 @@ import {
 } from "./cloud.js";
 import {
   googleStatus, saveGoogleKey, testGoogleKey, deviceUsage, hasRoom, limitMessage, autocomplete, placeDetails,
-  suggestPlaces, LimitReached,
+  suggestPlaces, placeKind, LimitReached,
 } from "./google.js";
 import { searchFreePlaces, geocode, reverseGeocode } from "./osm.js";
 import { createMapView, loadLeaflet } from "./map.js";
@@ -598,7 +598,7 @@ function actionsMarkup(item) {
 
 function cardMarkup(item) {
   const initial = (item.name || "?").trim().charAt(0).toUpperCase();
-  const cuisine = prettyCuisine(item.cuisine);
+  const cuisine = typesOf(item)[0] || "";
 
   let html = '<article class="card' + (item.favorite ? " is-favorite" : "") +
     '" data-card-id="' + esc(item.id) + '">';
@@ -689,7 +689,7 @@ const openRows = new Set();
 
 function rowMarkup(item) {
   const open = openRows.has(item.id);
-  const cuisine = prettyCuisine(item.cuisine);
+  const cuisine = typesOf(item)[0] || "";
   const nowOpen = openNow(parseOpeningHours(item.opening_hours), new Date());
   const km = distanceKm(item);
 
@@ -883,12 +883,67 @@ function visibleItems() {
 const PLAIN_TYPES = new Set(["restaurant", "food", "point of interest", "establishment",
   "meal takeaway", "meal delivery", "store"]);
 
-/** "italian_restaurant" -> "Italian", "coffee_shop" -> "Coffee shop", "restaurant" -> "". */
+// The same kind of food, however a source spells it.
+const TYPE_LABELS = {
+  hamburger: "Burgers", burger: "Burgers", burgers: "Burgers", "meal takeaway": "Takeaway",
+  "ice cream shop": "Ice cream", "ice cream": "Ice cream", "dessert shop": "Desserts", dessert: "Desserts",
+  "coffee shop": "Coffee", coffee_shop: "Coffee", "bagel shop": "Bagels", bagel: "Bagels",
+  "sandwich shop": "Sandwiches", sandwich: "Sandwiches", "steak house": "Steak & grill", steak: "Steak & grill",
+  steak_house: "Steak & grill", barbecue: "Steak & grill", bbq: "Steak & grill", grill: "Steak & grill",
+  "middle eastern": "Middle Eastern", "fine dining": "Fine dining", "fast food": "Fast food",
+  "juice shop": "Juice", "tea house": "Tea", "donut shop": "Donuts", "chicken wings": "Chicken",
+  noodle: "Noodles", "noodle shop": "Noodles", ramen: "Ramen", sushi: "Sushi", pizza: "Pizza",
+};
+
+/** "italian_restaurant" -> "Italian", "hamburger" -> "Burgers", "restaurant" -> "". */
 function typeName(raw) {
   const words = String(raw || "").replace(/_/g, " ").replace(/\s+restaurant$/i, "")
     .replace(/\s+/g, " ").trim().toLowerCase();
   if (!words || PLAIN_TYPES.has(words)) return "";
-  return words.charAt(0).toUpperCase() + words.slice(1);
+  return TYPE_LABELS[words] || words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// When no source says what a place serves, its name often does: "Bagel shop",
+// "Chicken Station", "חומוס". Each rule is [label, English words, Hebrew words];
+// English words of five letters or more also match as the start of a word
+// ("steakiya", "burgers"); shorter ones only whole (or plural).
+const NAME_TYPES = [
+  ["Sushi", ["sushi", "nigiri", "maki", "omakase"], ["סושי"]],
+  ["Ramen", ["ramen"], ["ראמן"]],
+  ["Japanese", ["izakaya", "yakitori", "japanese", "udon"], ["איזקאיה", "יפני", "יפנית"]],
+  ["Pizza", ["pizza", "pizzeria"], ["פיצה", "פיצריה", "פיצות"]],
+  ["Burgers", ["burger", "hamburger"], ["בורגר", "המבורגר", "בורגרים"]],
+  ["Bagels", ["bagel"], ["בייגל"]],
+  ["Hummus", ["hummus", "humus"], ["חומוס", "חומוסיה", "פול", "מסבחה"]],
+  ["Falafel", ["falafel"], ["פלאפל"]],
+  ["Shawarma", ["shawarma", "shwarma"], ["שווארמה", "שוארמה"]],
+  ["Steak & grill", ["steak", "grill", "bbq", "asado", "meat", "smokehouse"], ["סטייק", "סטקיה", "גריל", "אסאדו", "בשר", "בשרים"]],
+  ["Chicken", ["chicken"], ["עוף"]],
+  ["Seafood", ["seafood", "fish", "oyster"], ["דגים", "פירות"]],
+  ["Wine bar", ["wine", "vino", "enoteca"], ["יין", "יינות"]],
+  ["Mexican", ["taqueria", "taco", "mexican", "cantina"], ["טאקו", "מקסיקני"]],
+  ["Thai", ["thai"], ["תאילנדי", "תאילנדית"]],
+  ["Asian", ["asian", "wok", "noodle", "dumpling", "dim"], ["אסייתי", "נודלס", "ווק"]],
+  ["Italian", ["trattoria", "osteria", "pasta", "italian"], ["פסטה", "איטלקי", "איטלקית"]],
+  ["Ice cream", ["gelato", "gelateria", "icecream"], ["גלידה", "גלידריה"]],
+  ["Desserts", ["dessert", "patisserie", "chocolate"], ["קינוחים", "קונדיטוריה"]],
+  ["Bakery", ["bakery", "boulangerie", "bakehouse"], ["מאפייה", "מאפיה"]],
+  ["Cafe", ["cafe", "café", "cafeteria", "coffee", "espresso"], ["קפה", "קפיטריה"]],
+  ["Vegan", ["vegan"], ["טבעוני", "טבעונית"]],
+  ["Bistro", ["bistro", "brasserie"], ["ביסטרו"]],
+  ["Deli", ["deli", "sandwich"], ["כריכים"]],
+  ["Bar", ["bar", "pub", "tavern"], ["בר", "פאב"]],
+];
+
+function guessType(name) {
+  const words = String(name || "").toLowerCase().split(/[^a-zé0-9א-ת']+/).filter(Boolean);
+  for (const [label, english, hebrew] of NAME_TYPES) {
+    const hit = words.some((word) => english.some((key) =>
+      key.length >= 5 ? word.startsWith(key) : word === key || word === key + "s") ||
+      hebrew.some((key) => word === key || (word.length === key.length + 1 && "הובלמשכ".includes(word[0]) && word.slice(1) === key)));
+    if (hit) return label;
+  }
+  return "";
 }
 
 // What a place is: every cuisine it lists ("Japanese", "Sushi"), otherwise what
@@ -896,7 +951,7 @@ function typeName(raw) {
 function typesOf(item) {
   const found = String(item.cuisine || "").split(/[;,]/).map(typeName).filter(Boolean);
   if (!found.length) {
-    const kind = typeName(item.place_type);
+    const kind = typeName(item.place_type) || guessType(item.name) || guessType(item.local_name);
     if (kind) found.push(kind);
   }
   return [...new Set(found)];
@@ -930,7 +985,7 @@ function refreshFilterOptions() {
 
 function popupMarkup(item) {
   const bits = ['<strong>' + (item.favorite ? "★ " : "") + esc(item.name) + "</strong>"];
-  const cuisine = prettyCuisine(item.cuisine);
+  const cuisine = typesOf(item)[0] || "";
   if (cuisine) bits.push(esc(cuisine));
   const parsed = parseOpeningHours(item.opening_hours);
   const open = openNow(parsed, new Date());
@@ -2316,7 +2371,25 @@ function resetAddModal() {
   state.suggest.where = "country";
   $("suggest-type").value = "";
   showSuggestArea();
+  showRecommendBody(false);
   clearDraftPhotos();
+}
+
+// Adding a place you know is what the dialog is for, so the search leads and
+// recommendations wait, folded, behind one tap.
+async function showRecommendBody(open, animate) {
+  const body = $("recommend-body");
+  $("recommend").classList.toggle("is-open", open);
+  $("recommend-toggle").setAttribute("aria-expanded", open ? "true" : "false");
+  if (open) {
+    body.hidden = false;
+    if (animate) revealHeight(body);
+    if (state.suggest.where === "spot") ensureSpotMap();
+  } else if (!body.hidden) {
+    if (animate) await concealHeight(body);
+    body.hidden = true;
+    body.getAnimations().forEach((animation) => animation.cancel());
+  }
 }
 
 // The card and the search are two ways in: while a name is being typed, the
@@ -3009,7 +3082,7 @@ function showConfirm(place) {
       '<label class="field-label" for="manual-city">City <span style="text-transform:none">(optional)</span></label>' +
       '<input type="text" id="manual-city" value="' + esc(place.city || "") + '"></div>';
   } else {
-    const cuisine = prettyCuisine(place.cuisine);
+    const cuisine = typesOf(place)[0] || "";
     if (place.local_name) html += '<div class="card-local">' + esc(place.local_name) + "</div>";
     if (cuisine) html += '<div class="card-cuisine">' + esc(cuisine) + "</div>";
     html += '<div class="card-meta">' + metaMarkup(place, true) + "</div>";
@@ -3521,7 +3594,15 @@ function hostOf(url) {
   }
 }
 
-const MENU_FINDER_VERSION = 2;
+const MENU_FINDER_VERSION = 3;
+
+// A menu worth looking for again: never looked for, or looked for by an older,
+// weaker finder that came back empty. Anything found (or pasted) is left alone.
+function menuWorthRetrying(item) {
+  if (!item.website) return false;
+  const menu = item.menu;
+  return !menu || ((menu.finder || 1) < MENU_FINDER_VERSION && !menu.url && !(menu.items && menu.items.length));
+}
 
 function openMenu(id) {
   const item = state.items.find((i) => i.id === id);
@@ -3535,9 +3616,7 @@ function openMenu(id) {
   $("close-menu").focus();
   // Menus looked up by the older, weaker search get one automatic second try -
   // unless that search already read dishes, which a re-check must not throw away.
-  const stale = item.menu && (item.menu.finder || 1) < MENU_FINDER_VERSION &&
-    !(item.menu.items && item.menu.items.length);
-  if (item.website && (!item.menu || stale)) findMenu(id, "");
+  if (menuWorthRetrying(item)) findMenu(id, "");
 }
 
 function closeMenu() {
@@ -3576,11 +3655,16 @@ function renderMenu(item, busyText, errorText) {
       '" target="_blank" rel="noopener noreferrer">' + icon("external") + "Open the menu</a>";
   }
   if (menu.items && menu.items.length) {
-    html += '<ul class="menu-items">' + menu.items.map((dish) =>
-      '<li><span class="menu-dish">' + esc(dish.name) +
+    let section = "";
+    html += '<ul class="menu-items">' + menu.items.map((dish) => {
+      const heading = dish.section && dish.section !== section
+        ? '<li class="menu-section">' + esc(dish.section) + "</li>" : "";
+      section = dish.section || section;
+      return heading + '<li><span class="menu-dish">' + esc(dish.name) +
       (dish.desc ? '<span class="menu-desc">' + esc(dish.desc) + "</span>" : "") + "</span>" +
       (dish.price ? '<span class="menu-price">' + esc(dish.price) + "</span>" : "") +
-      "</li>").join("") + "</ul>";
+      "</li>";
+    }).join("") + "</ul>";
   }
   const others = (menu.links || []).filter((l) => l.url !== menu.url && safeUrl(l.url)).slice(0, 4);
   if (others.length) {
@@ -3850,6 +3934,9 @@ $("results-empty").addEventListener("click", (event) => {
 });
 
 $("suggest-btn").addEventListener("click", () => recommend());
+$("recommend-toggle").addEventListener("click", () => {
+  showRecommendBody($("recommend-body").hidden, true);
+});
 // Both are forms only to keep the browser's address saving out of them; Enter
 // is handled by the fields themselves.
 ["search-form", "recommend"].forEach((id) => {
@@ -4408,6 +4495,49 @@ renderShareButton();
 setView(state.view);
 render(true);
 startCloud().catch((err) => console.warn("Sharing unavailable:", err));
+
+/* ---------- quiet upkeep ----------
+   A little while after the diary opens, a few things are filled in without
+   being asked: what kind of place Google says each untyped one is (a cheap
+   lookup, counted like any other), and menus an older search missed. A handful
+   each visit, one at a time, so it never gets in the way. */
+
+let tidied = false;
+
+async function tidyDiary() {
+  if (tidied || !navigator.onLine) return;
+  tidied = true;
+  if (googleStatus().configured) {
+    const untyped = state.items.filter((item) => item.google_place_id && !item.kind_checked &&
+      !String(item.cuisine || "").trim() && !typeName(item.place_type)).slice(0, 12);
+    for (const item of untyped) {
+      try {
+        const kind = await placeKind(item.google_place_id);
+        updateItem(item.id, kind ? { cuisine: kind, kind_checked: true } : { kind_checked: true });
+      } catch (err) {
+        break; // over the limit, offline, or a key problem: try again another day
+      }
+    }
+    applyGoogleStatus();
+  }
+  const menus = state.items.filter(menuWorthRetrying).slice(0, 8);
+  for (const item of menus) {
+    if (document.hidden) break;
+    await findMenu(item.id, "");
+  }
+  render();
+}
+// Once per visit, a few seconds after the diary is actually on screen.
+function tidySoon() {
+  setTimeout(() => {
+    if (document.hidden) {
+      document.addEventListener("visibilitychange", tidySoon, { once: true });
+      return;
+    }
+    tidyDiary().catch(() => {});
+  }, 6000);
+}
+tidySoon();
 
 const copyInAddress = shareLinkId(location.search);
 if (copyInAddress) {

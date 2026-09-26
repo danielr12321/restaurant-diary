@@ -289,13 +289,17 @@
           </div>
         </form>
         <form class="recommend" id="recommend" aria-labelledby="recommend-title" autocomplete="off">
-          <div class="recommend-head">
+          <button type="button" class="recommend-head" id="recommend-toggle" aria-expanded="false"
+                  aria-controls="recommend-body">
             <span class="recommend-mark" aria-hidden="true"><svg class="icon"><use href="#i-sparkle"/></svg></span>
-            <div>
-              <h3 id="recommend-title">Not sure where to go?</h3>
-              <p>Get a well-known place that isn't in your diary yet.</p>
-            </div>
-          </div>
+            <span class="recommend-text">
+              <strong id="recommend-title">Not sure where to go?</strong>
+              <span>Get 3 well-known places to try</span>
+            </span>
+            <svg class="icon recommend-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+          </button>
+
+          <div class="recommend-body" id="recommend-body" hidden>
 
           <div class="rec-field">
             <span class="rec-label" id="kind-label">Kind of place</span>
@@ -346,6 +350,7 @@
             <span id="suggest-label">Recommend one</span>
           </button>
           <div class="suggestion" id="suggestion" role="status" hidden></div>
+          </div>
         </form>
         <p class="search-notice" id="search-notice" role="status" hidden></p>
         <ul class="results" id="results" role="listbox" aria-label="Search results"></ul>
