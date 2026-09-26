@@ -1040,7 +1040,7 @@ function applyGoogleStatus() {
   renderGoogleUsage();
 }
 
-function usageMarkup(g, withSettingsLink) {
+function usageMarkup(g) {
   const reset = formatReset(g.resets_on);
   const paused = [];
   const rows = g.usage.map((u) => {
@@ -1075,9 +1075,7 @@ function usageMarkup(g, withSettingsLink) {
 
   return '<div class="usage-head">' +
     "<h2>Google Maps this month</h2>" +
-    '<span class="usage-connected">' + icon("check") + "Connected</span>" +
     '<span class="usage-reset">Resets ' + esc(reset) + "</span>" +
-    (withSettingsLink ? '<button type="button" class="link-btn" data-open-settings>Settings</button>' : "") +
     "</div>" +
     '<div class="usage-rows">' + rows + "</div>" +
     '<p class="usage-note">' + note + "</p>";
@@ -1101,9 +1099,11 @@ function renderGoogleUsage() {
     sheet.innerHTML = "";
     return;
   }
-  page.innerHTML = usageMarkup(g, true);
+  // How much of Google's allowance is used lives in Settings, not on the list.
+  page.hidden = true;
+  page.innerHTML = "";
   sheet.hidden = false;
-  sheet.innerHTML = usageMarkup(g, false);
+  sheet.innerHTML = usageMarkup(g);
 }
 
 function renderGoogleSettings() {
