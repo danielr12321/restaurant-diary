@@ -13,6 +13,31 @@ import { reserve, refund, LimitReached } from "./google.js";
 const HOME = { lat: 32.08, lng: 34.78 };
 const LEAFLET = "https://unpkg.com/leaflet@1.9.4/dist/";
 
+let sharedLeaflet = null;
+
+/** Load Leaflet once, for the main map or the small "pick a spot" map. */
+export function loadLeaflet() {
+  if (window.L) return Promise.resolve(window.L);
+  if (!sharedLeaflet) {
+    sharedLeaflet = new Promise((resolve, reject) => {
+      const css = document.createElement("link");
+      css.rel = "stylesheet";
+      css.href = LEAFLET + "leaflet.css";
+      document.head.appendChild(css);
+      const script = document.createElement("script");
+      script.src = LEAFLET + "leaflet.js";
+      script.onload = () => resolve(window.L);
+      script.onerror = () => {
+        sharedLeaflet = null;
+        script.remove();
+        reject(new Error("The map couldn't load. Check your internet connection, then try again."));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return sharedLeaflet;
+}
+
 export function createMapView({ canvas, message, popupHtml }) {
   const view = {
     engine: null, // null | "google" | "leaflet" | "paused" | "error"
@@ -29,7 +54,6 @@ export function createMapView({ canvas, message, popupHtml }) {
     last: null,
   };
   let scriptPromise = null;
-  let leafletPromise = null;
 
   function showMessage(text) {
     canvas.hidden = true;
@@ -66,26 +90,7 @@ export function createMapView({ canvas, message, popupHtml }) {
     return scriptPromise;
   }
 
-  function loadLeaflet() {
-    if (window.L) return Promise.resolve();
-    if (leafletPromise) return leafletPromise;
-    leafletPromise = new Promise((resolve, reject) => {
-      const css = document.createElement("link");
-      css.rel = "stylesheet";
-      css.href = LEAFLET + "leaflet.css";
-      document.head.appendChild(css);
-      const script = document.createElement("script");
-      script.src = LEAFLET + "leaflet.js";
-      script.onload = resolve;
-      script.onerror = () => {
-        leafletPromise = null;
-        script.remove();
-        reject(new Error("The map couldn't load. Check your internet connection, then try again."));
-      };
-      document.head.appendChild(script);
-    });
-    return leafletPromise;
-  }
+
 
   // Google calls this when it rejects the key.
   window.gm_authFailure = () => {

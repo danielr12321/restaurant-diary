@@ -177,9 +177,9 @@
 
         <label class="chip chip-select" id="cuisine-wrap">
           <svg class="icon" aria-hidden="true"><use href="#i-utensils"/></svg>
-          <span class="sr-only">Cuisine</span>
+          <span class="sr-only">Type of place</span>
           <span class="chip-value" data-for="cuisine-filter" aria-hidden="true"></span>
-          <select id="cuisine-filter"><option value="">All cuisines</option></select>
+          <select id="cuisine-filter"><option value="">All types</option></select>
           <svg class="icon chip-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
         </label>
 
@@ -278,6 +278,56 @@
             <svg class="icon" aria-hidden="true"><use href="#i-sparkle"/></svg>
             <span id="suggest-label">Recommend one</span>
           </button>
+          <button type="button" class="link-btn suggest-toggle" id="suggest-toggle"
+                  aria-expanded="false" aria-controls="suggest-panel">Type and area</button>
+        </div>
+
+        <div class="suggest-panel" id="suggest-panel" hidden>
+          <div class="suggest-line">
+            <span class="field-label">What kind?</span>
+            <label class="chip chip-select">
+              <svg class="icon" aria-hidden="true"><use href="#i-utensils"/></svg>
+              <span class="sr-only">Type of place</span>
+              <span class="chip-value" data-for="suggest-type" aria-hidden="true"></span>
+              <select id="suggest-type"></select>
+              <svg class="icon chip-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+            </label>
+          </div>
+
+          <div class="suggest-line">
+            <span class="field-label">Where?</span>
+            <div class="suggest-where" role="group" aria-label="Where to look">
+              <button type="button" class="chip is-on" data-where="country">Anywhere</button>
+              <button type="button" class="chip" data-where="me">Near me</button>
+              <button type="button" class="chip" data-where="spot">Pick a spot</button>
+            </div>
+          </div>
+
+          <div id="suggest-area" hidden>
+            <div class="menu-paste-row" id="spot-search" hidden>
+              <input type="text" id="spot-address" autocomplete="off" enterkeyhint="search"
+                     placeholder="Street and city — or tap the map">
+              <button type="button" class="btn btn-ghost btn-sm" id="spot-find">Find</button>
+            </div>
+            <div class="spot-map" id="spot-map" hidden></div>
+            <div class="suggest-line">
+              <span class="field-label" id="radius-label">How far?</span>
+              <label class="chip chip-select">
+                <span class="sr-only">Distance</span>
+                <span class="chip-value" data-for="suggest-radius" aria-hidden="true"></span>
+                <select id="suggest-radius">
+                  <option value="1">1 km</option>
+                  <option value="2">2 km</option>
+                  <option value="5" selected>5 km</option>
+                  <option value="10">10 km</option>
+                  <option value="25">25 km</option>
+                  <option value="50">50 km</option>
+                </select>
+                <svg class="icon chip-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+              </label>
+            </div>
+            <p class="field-help" id="spot-label"></p>
+          </div>
         </div>
         <div class="suggestion" id="suggestion" role="status" hidden></div>
         <p class="search-notice" id="search-notice" role="status" hidden></p>

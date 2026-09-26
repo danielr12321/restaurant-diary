@@ -57,8 +57,8 @@ const GENERIC_HEBREW = /(^|\s)(מסעדת|מסעדה|קפה|בית קפה|פיצ
 /** The name two branches of one chain share, or "" if there isn't one. */
 export function chainKey(name) {
   const base = String(name || "").toLowerCase()
-    .normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[֑-ׇ]/g, "")
-    .replace(/['"״׳`’.,!?&()\-–—_/:]+/g, " ");
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[\u0591-\u05c7]/g, "")
+    .replace(/['"\u05f4\u05f3`\u2019.,!?&()\-\u2013\u2014_/:]+/g, " ");
   const stripped = base.replace(GENERIC_WORDS, " ").replace(GENERIC_HEBREW, " ");
   return stripped.replace(/\s+/g, " ").trim() || base.replace(/\s+/g, " ").trim();
 }
@@ -319,6 +319,43 @@ async function nominatim(query, country) {
   const response = await fetch(NOMINATIM_URL + "?" + params, { signal: AbortSignal.timeout(20000) });
   if (!response.ok) throw new Error("OpenStreetMap answered with an error (" + response.status + ").");
   return (await response.json()).map(normalizePlace);
+}
+
+/** What's at a point on the map, in words. Free, from OpenStreetMap. */
+export async function reverseGeocode(lat, lon) {
+  const wait = lastCall + 1100 - Date.now();
+  lastCall = Date.now() + Math.max(0, wait);
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  const params = new URLSearchParams({
+    lat: String(lat), lon: String(lon), format: "jsonv2", zoom: "18", "accept-language": "en",
+  });
+  const response = await fetch("https://nominatim.openstreetmap.org/reverse?" + params,
+    { signal: AbortSignal.timeout(20000) });
+  if (!response.ok) return "";
+  const found = await response.json();
+  const name = found.display_name || "";
+  return name.split(",").slice(0, 2).join(",").trim();
+}
+
+/** Turn a typed address into a point on the map. Free, from OpenStreetMap. */
+export async function geocode(query, country) {
+  const wait = lastCall + 1100 - Date.now();
+  lastCall = Date.now() + Math.max(0, wait);
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  const params = new URLSearchParams({
+    q: query, format: "jsonv2", limit: "1", addressdetails: "1", "accept-language": "en",
+  });
+  if (country) params.set("countrycodes", country);
+  const response = await fetch(NOMINATIM_URL + "?" + params, { signal: AbortSignal.timeout(20000) });
+  if (!response.ok) throw new Error("Couldn't look that address up (" + response.status + ").");
+  const found = (await response.json())[0];
+  if (!found) throw new Error("No place found by that name or address.");
+  const name = found.display_name || query;
+  return {
+    lat: Number(found.lat),
+    lon: Number(found.lon),
+    label: name.split(",").slice(0, 2).join(",").trim(),
+  };
 }
 
 /**

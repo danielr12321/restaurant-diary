@@ -13,8 +13,8 @@ import {
   googleStatus, saveGoogleKey, deviceUsage, hasRoom, limitMessage, autocomplete, placeDetails,
   suggestPlaces, findBranchesOnline, LimitReached,
 } from "./google.js";
-import { searchFreePlaces, findBranches, chainKey } from "./osm.js";
-import { createMapView } from "./map.js";
+import { searchFreePlaces, findBranches, chainKey, geocode, reverseGeocode } from "./osm.js";
+import { createMapView, loadLeaflet } from "./map.js";
 
 const DAY_KEYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 // Where the diary lives, used when no country is chosen for a search.
@@ -53,6 +53,11 @@ const state = {
   choosing: false,
   sharedLink: "",
   suggested: null,
+  // what "recommend me one" should look for: kind of place, and where
+  suggest: {
+    type: "", where: "country", radius: 5, point: null,
+    ...(readSetting("suggest-filters", null) || {}),
+  },
   branches: [],
   detailsBranches: [],
   searchCountry: readSetting("search-country", ""),
@@ -765,7 +770,7 @@ function visibleItems() {
       .filter(Boolean).join(" ").toLowerCase().includes(term));
   }
   if (state.cuisine) {
-    items = items.filter((item) => prettyCuisine(item.cuisine) === state.cuisine);
+    items = items.filter((item) => typesOf(item).includes(state.cuisine));
   }
   if (state.city) {
     items = items.filter((item) => (item.city || "") === state.city);
@@ -800,14 +805,39 @@ function visibleItems() {
   return items.slice().sort(sorters[state.sort] || sorters.added);
 }
 
+// Google's words for a place that say nothing about what it serves.
+const PLAIN_TYPES = new Set(["restaurant", "food", "point of interest", "establishment",
+  "meal takeaway", "meal delivery", "store"]);
+
+/** "italian_restaurant" -> "Italian", "coffee_shop" -> "Coffee shop", "restaurant" -> "". */
+function typeName(raw) {
+  const words = String(raw || "").replace(/_/g, " ").replace(/\s+restaurant$/i, "")
+    .replace(/\s+/g, " ").trim().toLowerCase();
+  if (!words || PLAIN_TYPES.has(words)) return "";
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// What a place is: every cuisine it lists ("Japanese", "Sushi"), otherwise what
+// kind of place it is ("Cafe", "Bakery"). Both lists filter on it.
+function typesOf(item) {
+  const found = String(item.cuisine || "").split(/[;,]/).map(typeName).filter(Boolean);
+  if (!found.length) {
+    const kind = typeName(item.place_type);
+    if (kind) found.push(kind);
+  }
+  return [...new Set(found)];
+}
+
 function refreshFilterOptions() {
   const cuisines = new Set();
   const cities = new Set();
   state.items.forEach((item) => {
-    const cuisine = prettyCuisine(item.cuisine);
-    if (cuisine) cuisines.add(cuisine);
+    typesOf(item).forEach((type) => cuisines.add(type));
     if (item.city) cities.add(item.city);
   });
+  // A choice whose last place was just deleted or edited away stops filtering.
+  if (state.cuisine && !cuisines.has(state.cuisine)) state.cuisine = "";
+  if (state.city && !cities.has(state.city)) state.city = "";
 
   const fill = (id, values, allLabel, selected) => {
     const select = $(id);
@@ -818,7 +848,7 @@ function refreshFilterOptions() {
     if (selected && !sorted.includes(selected)) select.value = "";
   };
 
-  fill("cuisine-filter", cuisines, "All cuisines", state.cuisine);
+  fill("cuisine-filter", cuisines, "All types", state.cuisine);
   fill("city-filter", cities, "All cities", state.city);
 }
 
@@ -1331,7 +1361,7 @@ function normalizeName(name) {
   const base = String(name || "").toLowerCase()
     .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[\u0591-\u05c7]/g, "")
-    .replace(/['"״׳`’.,!?&()\-–—_/:]+/g, " ");
+    .replace(/['"\u05f4\u05f3`\u2019.,!?&()\-\u2013\u2014_/:]+/g, " ");
   const stripped = base.replace(GENERIC_NAME_WORDS, " ").replace(GENERIC_HEBREW_WORDS, " ")
     .replace(/\s+/g, " ").trim();
   return stripped || base.replace(/\s+/g, " ").trim();
@@ -1344,8 +1374,40 @@ function namesMatch(a, b) {
   return Math.min(a.length, b.length) >= 4 && (a.includes(b) || b.includes(a));
 }
 
+const STREET_WORDS = /\b(st|street|str|rd|road|ave|avenue|blvd|boulevard|sderot|rehov|derech|israel)\b/g;
+
+/** The words and house numbers of an address, without the city it's in. */
+function addressParts(text, cities) {
+  const clean = (value) => String(value || "").toLowerCase()
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[\u0591-\u05c7]/g, "")
+    .replace(/['"\u05f3\u05f4`\u2019]|(?<=\p{L})-(?=\p{L})/gu, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ").replace(STREET_WORDS, " ");
+  const cityWords = new Set(cities.flatMap((city) => clean(city).split(" ")).filter(Boolean));
+  const tokens = clean(text).split(" ").filter(Boolean);
+  return {
+    numbers: tokens.filter((token) => /^\d+[a-z]?$/.test(token)),
+    words: tokens.filter((token) => !/\d/.test(token) && !cityWords.has(token)),
+  };
+}
+
+// The same street and house number, however each was written: "3 Ahad Ha'Am
+// St., Tel Aviv" and "Ahad HaAm 3" are one address; "Dizengoff 100" and
+// "Dizengoff 50" are two branches.
+function sameAddress(a, b, cities) {
+  const one = addressParts(a, cities);
+  const two = addressParts(b, cities);
+  if (one.numbers.length && two.numbers.length &&
+      !one.numbers.some((number) => two.numbers.includes(number))) {
+    return false;
+  }
+  const [shorter, longer] = one.words.length <= two.words.length
+    ? [one.words, two.words] : [two.words, one.words];
+  return shorter.length > 0 && shorter.every((word) => longer.includes(word));
+}
+
 function findDuplicates(place) {
   const names = [place.name, place.local_name].map(normalizeName).filter(Boolean);
+  const address = place.address || place.full_address || "";
   const lat = parseFloat(place.lat);
   const lon = parseFloat(place.lon);
   const located = isFinite(lat) && isFinite(lon);
@@ -1362,17 +1424,35 @@ function findDuplicates(place) {
     const itemNames = [item.name, item.local_name].map(normalizeName).filter(Boolean);
     if (!names.some((a) => itemNames.some((b) => namesMatch(a, b)))) return false;
 
-    // Same name: only a duplicate if it's the same spot, so another branch of
-    // a chain (Miznon Paris vs Miznon Tel Aviv) can still be added freely.
+    // The same name is not enough — branches of a chain all share it. It's the
+    // same place only when the address matches too, or when the two pins sit on
+    // the same doorstep (one address in Hebrew and one in English, say).
     const itemLat = parseFloat(item.lat);
     const itemLon = parseFloat(item.lon);
-    if (located && isFinite(itemLat) && isFinite(itemLon)) {
-      return haversineKm({ lat: lat, lon: lon }, { lat: itemLat, lon: itemLon }) <= 0.5;
+    const km = located && isFinite(itemLat) && isFinite(itemLon)
+      ? haversineKm({ lat: lat, lon: lon }, { lat: itemLat, lon: itemLon }) : null;
+    if (km !== null && km <= 0.05) return true;
+    if (address && item.address) {
+      // The same street name in two different towns isn't the same place.
+      if (km !== null && km > 2) return false;
+      return sameAddress(address, item.address, [place.city, item.city]);
     }
-    const city = normalizeName(place.city);
-    const itemCity = normalizeName(item.city);
-    return !city || !itemCity || city === itemCity;
+    return km !== null && km <= 0.15;
   });
+}
+
+/** Also true for a branch of a chain that's already saved. */
+function alreadyInDiary(place) {
+  if (findDuplicates(place).length) return true;
+  const lat = parseFloat(place.lat);
+  const lon = parseFloat(place.lon);
+  if (!isFinite(lat) || !isFinite(lon)) return false;
+  return state.items.some((item) => branchesOf(item).some((branch) => {
+    const bLat = parseFloat(branch.lat);
+    const bLon = parseFloat(branch.lon);
+    return isFinite(bLat) && isFinite(bLon) &&
+      haversineKm({ lat: lat, lon: lon }, { lat: bLat, lon: bLon }) <= 0.15;
+  }));
 }
 
 function listName(item) {
@@ -1452,12 +1532,18 @@ function clearFilters() {
   if (state.origin) setOrigin(null);
 }
 
-function updateFilterBar() {
+// Each pill that wraps a dropdown shows what's chosen inside it.
+function syncChipValues() {
   document.querySelectorAll(".chip-value").forEach((label) => {
     const select = $(label.dataset.for);
+    if (!select) return;
     const option = select.options[select.selectedIndex];
     label.textContent = option ? option.textContent : "";
   });
+}
+
+function updateFilterBar() {
+  syncChipValues();
   $("cuisine-wrap").classList.toggle("is-on", !!state.cuisine);
   $("city-wrap").classList.toggle("is-on", !!state.city);
 
@@ -1569,92 +1655,287 @@ function setSearchNotice(text) {
 }
 
 /* ---------- recommend one ----------
-   For the evenings with no idea where to go: a well-known place in the country
-   the add screen is set to, that isn't in the diary yet. One search covers a
-   whole run of suggestions, so tapping "another one" costs Google nothing. */
+   For the evenings with no idea where to go: a well-known place that isn't in
+   the diary yet. It can be narrowed to a kind of food and to an area — near you,
+   or around any spot you pick on the map. */
 
 // Google answers one question with about twenty places, so the question changes
-// as they run out: other wordings first, then cuisine by cuisine. Each new
-// question is one request and yields another twenty, and every place already
-// shown is remembered, so the same names don't come round again.
-const SUGGEST_ANGLES = ["popular restaurants in", "best restaurants in", "famous restaurants in",
-  "highly rated restaurants in", "where locals eat in"];
+// as they run out. Every place already offered is remembered, so the same names
+// don't come round again.
+const SUGGEST_OPENERS = ["popular", "best", "famous", "highly rated", "well known", "top rated"];
 const SUGGEST_CUISINES = ["italian", "sushi", "seafood", "vegetarian", "steak", "middle eastern",
   "burger", "asian", "french", "breakfast", "bakery", "pizza", "mexican", "indian", "tapas",
   "hummus", "fish", "vegan", "dessert", "grill"];
 
-function suggestQuery(where, angle) {
-  if (angle < SUGGEST_ANGLES.length) return SUGGEST_ANGLES[angle] + " " + where;
-  const cuisine = SUGGEST_CUISINES[(angle - SUGGEST_ANGLES.length) % SUGGEST_CUISINES.length];
-  return "best " + cuisine + " restaurants in " + where;
-}
+// What "kind of place" can be asked for. `included` is Google's own type, for
+// the kinds that aren't restaurants.
+const PLACE_KINDS = [
+  { value: "", label: "Any type", phrase: "a restaurant" },
+  { value: "italian", label: "Italian", phrase: "an Italian restaurant" },
+  { value: "pizza", label: "Pizza", phrase: "a pizza place", noun: "pizza places" },
+  { value: "sushi", label: "Sushi", phrase: "a sushi place" },
+  { value: "asian", label: "Asian", phrase: "an Asian restaurant" },
+  { value: "middle eastern", label: "Middle Eastern", phrase: "a Middle Eastern restaurant" },
+  { value: "hummus", label: "Hummus", phrase: "a hummus place", noun: "hummus places" },
+  { value: "seafood", label: "Seafood", phrase: "a seafood restaurant" },
+  { value: "steak", label: "Steak & grill", phrase: "a steak & grill place", noun: "steakhouses and grills" },
+  { value: "burger", label: "Burgers", phrase: "a burger place", noun: "burger places" },
+  { value: "vegan", label: "Vegan & vegetarian", phrase: "a vegan or vegetarian place",
+    noun: "vegan and vegetarian restaurants" },
+  { value: "breakfast", label: "Breakfast & brunch", phrase: "a breakfast place", noun: "breakfast and brunch places" },
+  { value: "french", label: "French", phrase: "a French restaurant" },
+  { value: "mexican", label: "Mexican", phrase: "a Mexican restaurant" },
+  { value: "indian", label: "Indian", phrase: "an Indian restaurant" },
+  { value: "thai", label: "Thai", phrase: "a Thai restaurant" },
+  { value: "dessert", label: "Dessert", phrase: "a dessert place", noun: "dessert places" },
+  { value: "cafe", label: "Café", phrase: "a café", noun: "cafes", included: "cafe" },
+  { value: "bakery", label: "Bakery", phrase: "a bakery", noun: "bakeries", included: "bakery" },
+  { value: "bar", label: "Bar", phrase: "a bar", noun: "bars", included: "bar" },
+];
 
-const pools = new Map(); // country -> places fetched this visit
+const pools = new Map(); // one list of places per set of filters
 
 function suggestCountry() {
   const code = state.searchCountry || HOME_COUNTRY;
   return { code, name: countryName(code) };
 }
 
-function showSuggestLabel() {
-  $("suggest-label").textContent = "Recommend me a restaurant in " + suggestCountry().name;
+function suggestKind() {
+  return PLACE_KINDS.find((kind) => kind.value === state.suggest.type) || PLACE_KINDS[0];
 }
+
+/** The area to search in, or null for the whole country. */
+function suggestArea() {
+  const point = state.suggest.point;
+  if (state.suggest.where === "country" || !point) return null;
+  return { lat: point.lat, lon: point.lon, radius: state.suggest.radius };
+}
+
+function suggestQuery(angle) {
+  const kind = suggestKind();
+  const tail = suggestArea() ? "" : " in " + suggestCountry().name;
+  const opener = SUGGEST_OPENERS[angle % SUGGEST_OPENERS.length];
+  if (kind.value) return opener + " " + (kind.noun || kind.value + " restaurants") + tail;
+  if (angle < SUGGEST_OPENERS.length) return opener + " restaurants" + tail;
+  const cuisine = SUGGEST_CUISINES[(angle - SUGGEST_OPENERS.length) % SUGGEST_CUISINES.length];
+  return "best " + cuisine + " restaurants" + tail;
+}
+
+/** Each set of filters keeps its own list and its own memory of what's been shown. */
+function suggestKey() {
+  const area = suggestArea();
+  return [suggestCountry().code, state.suggest.type || "any",
+    area ? area.lat.toFixed(2) + "," + area.lon.toFixed(2) + "@" + area.radius : "all"].join("|");
+}
+
+function saveSuggestFilters() {
+  writeSetting("suggest-filters", state.suggest);
+}
+
+/* ---------- the filter panel ---------- */
+
+function buildKindOptions() {
+  $("suggest-type").innerHTML = PLACE_KINDS
+    .map((kind) => '<option value="' + esc(kind.value) + '">' + esc(kind.label) + "</option>").join("");
+  $("suggest-type").value = state.suggest.type;
+}
+
+function showSuggestLabel() {
+  const what = suggestKind().phrase;
+  const point = state.suggest.point;
+  let where = " in " + suggestCountry().name;
+  if (state.suggest.where === "me" && point) where = " near me";
+  else if (state.suggest.where === "spot" && point) where = " near " + point.label;
+  else if (state.suggest.where !== "country") where = "";
+  $("suggest-label").textContent = "Recommend me " + what + where;
+  syncChipValues();
+}
+
+function showSuggestArea() {
+  const mode = state.suggest.where;
+  document.querySelectorAll("[data-where]").forEach((chip) => {
+    chip.classList.toggle("is-on", chip.dataset.where === mode);
+  });
+  $("suggest-area").hidden = mode === "country";
+  $("spot-search").hidden = mode !== "spot";
+  $("spot-map").hidden = mode !== "spot";
+  $("radius-label").textContent = mode === "me" ? "How far from you?" : "How far from the spot?";
+  const point = state.suggest.point;
+  $("spot-label").textContent = point && mode === "spot" ? "Looking around " + point.label
+    : mode === "me" && point ? "Looking around where you are now" : "";
+  showSuggestLabel();
+}
+
+function setSuggestPoint(lat, lon, label) {
+  state.suggest.point = { lat: Number(lat), lon: Number(lon), label: label || "the spot you picked" };
+  saveSuggestFilters();
+  suggestionBox("");
+  showSuggestArea();
+  if (spotMap) {
+    const here = [state.suggest.point.lat, state.suggest.point.lon];
+    if (spotPin) spotPin.setLatLng(here);
+    else spotPin = window.L.marker(here).addTo(spotMap);
+    spotMap.setView(here, Math.max(spotMap.getZoom(), 13), { animate: false });
+  }
+}
+
+let spotMap = null;
+let spotPin = null;
+let spotMapLoading = null;
+
+function ensureSpotMap() {
+  if (spotMap) {
+    setTimeout(() => spotMap.invalidateSize({ animate: false }), 60);
+    return Promise.resolve();
+  }
+  // Choosing "Pick a spot" and finding an address both ask for the map; the
+  // second ask waits for the first instead of building a map of its own.
+  if (!spotMapLoading) {
+    spotMapLoading = buildSpotMap().finally(() => { spotMapLoading = null; });
+  }
+  return spotMapLoading;
+}
+
+async function buildSpotMap() {
+  try {
+    await loadLeaflet();
+  } catch (err) {
+    $("spot-label").textContent = err.message;
+    return;
+  }
+  const point = state.suggest.point || state.origin;
+  const centre = point ? [point.lat, point.lon] : [32.08, 34.78];
+  spotMap = window.L.map($("spot-map"), { scrollWheelZoom: false, attributionControl: false })
+    .setView(centre, point ? 13 : 8);
+  window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(spotMap);
+  if (state.suggest.point) {
+    spotPin = window.L.marker([state.suggest.point.lat, state.suggest.point.lon]).addTo(spotMap);
+  }
+  spotMap.on("click", async (event) => {
+    const { lat, lng } = event.latlng;
+    setSuggestPoint(lat, lng, "the spot you picked");
+    $("spot-label").textContent = "Looking around the spot you picked…";
+    try {
+      const label = await reverseGeocode(lat, lng);
+      if (label && state.suggest.point && state.suggest.point.lat === lat) {
+        setSuggestPoint(lat, lng, label);
+      }
+    } catch (err) {
+      /* the point works even without a name for it */
+    }
+  });
+  setTimeout(() => spotMap.invalidateSize({ animate: false }), 60);
+}
+
+function whereIsHere() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("This browser can't share your location."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({ lat: position.coords.latitude, lon: position.coords.longitude }),
+      (error) => reject(new Error(error.code === error.PERMISSION_DENIED
+        ? "Location permission denied — allow it, or pick a spot on the map instead."
+        : "Could not get your location.")),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+    );
+  });
+}
+
+async function setSuggestWhere(mode) {
+  state.suggest.where = mode;
+  if (mode === "country") {
+    saveSuggestFilters();
+    suggestionBox("");
+    showSuggestArea();
+    return;
+  }
+  if (mode === "spot") {
+    saveSuggestFilters();
+    showSuggestArea();
+    ensureSpotMap();
+    return;
+  }
+  // Near me: ask the phone where that is.
+  $("spot-label").textContent = "Finding your location…";
+  showSuggestArea();
+  try {
+    const here = state.origin || await whereIsHere();
+    setSuggestPoint(here.lat, here.lon, "where you are now");
+  } catch (err) {
+    state.suggest.where = "country";
+    showSuggestArea();
+    toast(err.message);
+  }
+}
+
+/* ---------- asking Google ---------- */
 
 function suggestionBox(html) {
   $("suggestion").innerHTML = html;
   $("suggestion").hidden = !html;
 }
 
-// What this device has already been offered for a country, so tomorrow's
+// What this device has already been offered for these filters, so tomorrow's
 // suggestions carry on rather than start over.
-function suggestMemory(country) {
-  const saved = readSetting("suggest-" + country, null);
+function suggestMemory(key) {
+  const saved = readSetting("suggest-" + key, null);
   return {
     angle: (saved && Number(saved.angle)) || 0,
     seen: new Set((saved && saved.seen) || []),
   };
 }
 
-function rememberSuggestions(country, memory) {
-  writeSetting("suggest-" + country, { angle: memory.angle, seen: [...memory.seen].slice(-300) });
+function rememberSuggestions(key, memory) {
+  writeSetting("suggest-" + key, { angle: memory.angle, seen: [...memory.seen].slice(-300) });
 }
 
 /** The next place nobody has been offered yet, and that isn't in the diary. */
-function nextSuggestion(country, memory) {
-  const pool = pools.get(country) || [];
+function nextSuggestion(key, memory) {
+  const pool = pools.get(key) || [];
   for (const place of pool) {
     const id = place.google_place_id || place.name;
-    if (memory.seen.has(id) || findDuplicates(place).length) continue;
+    if (memory.seen.has(id) || alreadyInDiary(place)) continue;
     memory.seen.add(id);
-    rememberSuggestions(country, memory);
+    rememberSuggestions(key, memory);
     return place;
   }
   return null;
 }
 
-function addToPool(country, places) {
-  const pool = pools.get(country) || [];
+function addToPool(key, places) {
+  const pool = pools.get(key) || [];
   const known = new Set(pool.map((place) => place.google_place_id));
   places.forEach((place) => {
     if (!known.has(place.google_place_id)) pool.push(place);
   });
   // A little shuffle so the answer isn't Google's order every evening.
-  pools.set(country, pool.sort(() => Math.random() - 0.5));
+  pools.set(key, pool.sort(() => Math.random() - 0.5));
 }
 
-function showSuggestion(place, where) {
-  if (!place) {
-    suggestionBox('<p class="menu-message">No more ideas for ' + esc(where) +
-      " right now — everything found is already in your diary. Try another country, or search by name.</p>");
-    return;
-  }
+function suggestWhereText() {
+  const area = suggestArea();
+  if (!area) return "in " + suggestCountry().name;
+  const point = state.suggest.point;
+  return "within " + state.suggest.radius + " km of " +
+    (state.suggest.where === "me" ? "you" : point.label);
+}
+
+function showSuggestion(place) {
   state.suggested = place;
   const kind = (place.place_type || "restaurant").replace(/_/g, " ");
+  // How far from the spot searched around, or from you when searching anywhere.
+  const from = suggestArea() || state.origin;
+  const km = from ? haversineKm(
+    { lat: from.lat, lon: from.lon },
+    { lat: parseFloat(place.lat), lon: parseFloat(place.lon) },
+  ) : null;
   suggestionBox('<div class="suggestion-head">' + icon("sparkle") +
-    "<span>Well known in " + esc(where) + "</span></div>" +
+    "<span>Well known " + esc(suggestWhereText()) + "</span></div>" +
     "<h3>" + esc(place.name) + "</h3>" +
-    '<p class="suggestion-where">' + esc([kind, place.full_address || place.address].filter(Boolean).join(" · ")) +
-    "</p>" +
+    '<p class="suggestion-where">' + esc([kind, place.full_address || place.address]
+      .filter(Boolean).join(" · ")) + (km !== null ? " · " + esc(formatDistance(km)) : "") + "</p>" +
     '<div class="suggestion-actions">' +
     '<button type="button" class="btn btn-primary btn-sm" data-suggest="take">' + icon("plus") +
     "Add this one</button>" +
@@ -1663,44 +1944,49 @@ function showSuggestion(place, where) {
 }
 
 async function recommend() {
-  const { code, name } = suggestCountry();
   if (!googleStatus().configured) {
     suggestionBox('<p class="menu-message">Recommendations come from Google Maps. Connect it in ' +
       "Settings (the gear at the top) and this will work.</p>");
     return;
   }
-
-  const memory = suggestMemory(code);
-  const ready = nextSuggestion(code, memory);
-  if (ready) {
-    showSuggestion(ready, name);
+  if (state.suggest.where !== "country" && !state.suggest.point) {
+    suggestionBox('<p class="menu-message">Pick the spot to search around first.</p>');
     return;
   }
 
-  suggestionBox('<p class="menu-status">' + spinnerMarkup() + "Looking for a good place in " +
-    esc(name) + "…</p>");
+  const key = suggestKey();
+  const memory = suggestMemory(key);
+  const ready = nextSuggestion(key, memory);
+  if (ready) {
+    showSuggestion(ready);
+    return;
+  }
+
+  suggestionBox('<p class="menu-status">' + spinnerMarkup() + "Looking for a good place " +
+    esc(suggestWhereText()) + "…</p>");
   try {
-    // Ask a different way until something new comes back (or it's clear the
-    // country has been mined out for now).
+    // Ask a different way until something new comes back (or it's clear this
+    // corner has been mined out for now).
     for (let tries = 0; tries < 3; tries += 1) {
-      const query = suggestQuery(name, memory.angle);
+      const query = suggestQuery(memory.angle);
       memory.angle += 1;
-      rememberSuggestions(code, memory);
-      addToPool(code, await suggestPlaces(code, query));
+      rememberSuggestions(key, memory);
+      addToPool(key, await suggestPlaces(suggestCountry().code, query, {
+        area: suggestArea(), includedType: suggestKind().included,
+      }));
       applyGoogleStatus();
-      const place = nextSuggestion(code, memory);
+      const place = nextSuggestion(key, memory);
       if (place) {
-        showSuggestion(place, name);
+        showSuggestion(place);
         return;
       }
     }
-    // Everything Google offers is either in the diary already or has been shown.
     memory.seen = new Set();
     memory.angle = 0;
-    rememberSuggestions(code, memory);
-    suggestionBox('<p class="menu-message">That is every place Google suggested for ' + esc(name) +
-      " so far — they're either in your diary already or you've just seen them. Tap again to " +
-      "start the round afresh.</p>");
+    rememberSuggestions(key, memory);
+    suggestionBox('<p class="menu-message">That is everything Google suggested ' +
+      esc(suggestWhereText()) + " so far — they're either in your diary already or you've just " +
+      "seen them. Tap again to start the round afresh, or widen the search.</p>");
   } catch (err) {
     suggestionBox('<p class="menu-error">' + esc(err.message) +
       (/unknown request kind|violates check constraint|invalid usage/i.test(err.message)
@@ -2069,6 +2355,7 @@ async function savePlace() {
     lat: place.lat || "",
     lon: place.lon || "",
     cuisine: place.cuisine || "",
+    place_type: place.place_type || "",
     opening_hours: place.opening_hours || "",
     phone: place.phone || "",
     website: place.website || "",
@@ -2884,6 +3171,54 @@ $("results-empty").addEventListener("click", (event) => {
 });
 
 $("suggest-btn").addEventListener("click", () => recommend());
+$("suggest-toggle").addEventListener("click", () => {
+  const open = $("suggest-panel").hidden;
+  $("suggest-panel").hidden = !open;
+  $("suggest-toggle").setAttribute("aria-expanded", open ? "true" : "false");
+  $("suggest-toggle").textContent = open ? "Hide the choices" : "Type and area";
+  if (open && state.suggest.where === "spot") ensureSpotMap();
+});
+$("suggest-type").addEventListener("change", (event) => {
+  state.suggest.type = event.target.value;
+  saveSuggestFilters();
+  suggestionBox("");
+  showSuggestLabel();
+});
+$("suggest-radius").addEventListener("change", (event) => {
+  state.suggest.radius = Number(event.target.value);
+  saveSuggestFilters();
+  suggestionBox("");
+  showSuggestArea();
+});
+document.querySelectorAll("[data-where]").forEach((chip) => {
+  chip.addEventListener("click", () => setSuggestWhere(chip.dataset.where));
+});
+$("spot-find").addEventListener("click", () => findSpot());
+$("spot-address").addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  findSpot();
+});
+
+async function findSpot() {
+  const query = $("spot-address").value.trim();
+  if (!query) {
+    $("spot-address").focus();
+    return;
+  }
+  const button = $("spot-find");
+  button.disabled = true;
+  $("spot-label").textContent = "Looking that address up…";
+  try {
+    const found = await geocode(query, state.searchCountry || "");
+    setSuggestPoint(found.lat, found.lon, found.label);
+    ensureSpotMap();
+  } catch (err) {
+    $("spot-label").textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+}
 $("suggestion").addEventListener("click", (event) => {
   const button = event.target.closest("[data-suggest]");
   if (!button) return;
@@ -3274,7 +3609,9 @@ if ("serviceWorker" in navigator && !IS_LOCAL) {
 
 buildCountryOptions();
 showSearchCountry();
-showSuggestLabel();
+buildKindOptions();
+$("suggest-radius").value = String(state.suggest.radius);
+showSuggestArea();
 applyGoogleStatus();
 renderShareButton();
 setView(state.view);

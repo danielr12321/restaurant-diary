@@ -367,17 +367,29 @@ const SUGGEST_FIELDS = [
   "places.addressComponents", "places.location", "places.primaryType", "places.types",
 ].join(",");
 
-/** Well-known restaurants for "recommend me one"; `query` is asked as typed. */
-export async function suggestPlaces(country, query) {
+/**
+ * Well-known places for "recommend me one". `query` is asked as typed; `area`,
+ * when given, keeps the answers within a circle: { lat, lon, radius } in km.
+ */
+export async function suggestPlaces(country, query, options = {}) {
   const key = googleKey();
   if (!key) throw new GoogleError("No Google API key is set.", false);
   const body = {
     textQuery: query,
     languageCode: "en",
     regionCode: country || "il",
-    includedType: "restaurant",
+    includedType: options.includedType || "restaurant",
     pageSize: 20,
   };
+  const area = options.area;
+  if (area && isFinite(area.lat) && isFinite(area.lon)) {
+    body.locationRestriction = {
+      circle: {
+        center: { latitude: Number(area.lat), longitude: Number(area.lon) },
+        radius: Math.min(50000, Math.max(500, (area.radius || 5) * 1000)),
+      },
+    };
+  }
   const raw = await billedCall("suggest", "POST", "/places:searchText", key,
     { body, fieldMask: SUGGEST_FIELDS });
   return (raw.places || []).map(normalizeDetails).filter((place) => place.is_food);
