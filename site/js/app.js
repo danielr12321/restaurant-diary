@@ -10,10 +10,10 @@ import {
   photoPath, photoLinks, findMenuOnline, readSharedLink, createShareLink, shareLinkId, readShareLink,
 } from "./cloud.js";
 import {
-  googleStatus, saveGoogleKey, deviceUsage, hasRoom, limitMessage, autocomplete, placeDetails,
-  suggestPlaces, findBranchesOnline, LimitReached,
+  googleStatus, saveGoogleKey, testGoogleKey, deviceUsage, hasRoom, limitMessage, autocomplete, placeDetails,
+  suggestPlaces, LimitReached,
 } from "./google.js";
-import { searchFreePlaces, findBranches, chainKey, chainNameParts, geocode, reverseGeocode } from "./osm.js";
+import { searchFreePlaces, geocode, reverseGeocode } from "./osm.js";
 import { createMapView, loadLeaflet } from "./map.js";
 
 const DAY_KEYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
@@ -60,8 +60,6 @@ const state = {
     radius: Number((readSetting("suggest-filters", null) || {}).radius) || 5,
     point: (readSetting("suggest-filters", null) || {}).point || null,
   },
-  branches: [],
-  detailsBranches: [],
   searchCountry: readSetting("search-country", ""),
 };
 
@@ -314,11 +312,11 @@ function hoursMarkup(rawHours, quiet, brief) {
 }
 
 function isOpenNow(item) {
-  return openNow(parseOpeningHours(hoursOf(item)), new Date()) === true;
+  return openNow(parseOpeningHours(item.opening_hours), new Date()) === true;
 }
 
 function hasReadableHours(item) {
-  return openNow(parseOpeningHours(hoursOf(item)), new Date()) !== null;
+  return openNow(parseOpeningHours(item.opening_hours), new Date()) !== null;
 }
 
 /* ---------- metadata rows shared by cards and the preview ---------- */
@@ -376,56 +374,8 @@ function haversineKm(from, to) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-/* ---------- chains ----------
-   A chain is one entry with the addresses of its branches on it, so the diary
-   holds "Landwer", not fourteen Landwers. Distance, opening hours and the map
-   then work from whichever branch is nearest. */
-
-function branchesOf(item) {
-  return item.chain && Array.isArray(item.branches) ? item.branches.filter((b) => b && b.lat) : [];
-}
-
-function nearestBranch(item) {
-  if (!state.origin) return null;
-  let best = null;
-  branchesOf(item).forEach((branch) => {
-    const lat = parseFloat(branch.lat);
-    const lon = parseFloat(branch.lon);
-    if (!isFinite(lat) || !isFinite(lon)) return;
-    const km = haversineKm(state.origin, { lat: lat, lon: lon });
-    if (!best || km < best.km) best = { branch, km };
-  });
-  return best;
-}
-
-/** The hours to judge "open now" by: the nearest branch's, or any branch's. */
-function hoursOf(item) {
-  if (item.opening_hours) return item.opening_hours;
-  const near = nearestBranch(item);
-  if (near && near.branch.opening_hours) return near.branch.opening_hours;
-  const any = branchesOf(item).find((branch) => branch.opening_hours);
-  return any ? any.opening_hours : "";
-}
-
-/** A chain shown as the branch that matters right now. */
-function asShown(item) {
-  const branches = branchesOf(item);
-  if (!branches.length) return item;
-  const near = nearestBranch(item);
-  const branch = near ? near.branch : branches[0];
-  return {
-    ...item,
-    address: branch.address || item.address,
-    city: branch.city || item.city,
-    phone: branch.phone || item.phone,
-    opening_hours: hoursOf(item),
-  };
-}
-
 function distanceKm(item) {
   if (!state.origin) return null;
-  const near = nearestBranch(item);
-  if (near) return near.km;
   const lat = parseFloat(item.lat);
   const lon = parseFloat(item.lon);
   if (!isFinite(lat) || !isFinite(lon)) return null;
@@ -559,44 +509,17 @@ function toggleFavorite(id) {
 
 /* ---------- cards ---------- */
 
-function branchesMarkup(item) {
-  const branches = branchesOf(item);
-  if (!branches.length) return "";
-  const near = nearestBranch(item);
-  const where = item.country ? " in " + esc(item.country) : "";
-  return '<div class="meta-row">' + icon("pin") + "<span>" + branches.length + " branch" +
-    (branches.length === 1 ? "" : "es") + where +
-    (near ? " · nearest: " + esc(near.branch.address || near.branch.city || formatDistance(near.km)) : "") +
-    " · " +
-    '<button type="button" class="link-btn branch-more" data-act="branches" data-id="' + esc(item.id) +
-    '">see them all</button></span></div>';
-}
-
 // The address, hours, menu and distance, shared by both layouts. A card's
-// status line already says how far and whether it's open, and its chain hint
-// sits above, so there they're left out.
+// status line already says how far and whether it's open, so there those are
+// left out.
 function detailsMarkup(item, inCard) {
   const km = inCard ? null : distanceKm(item);
-  const branches = branchesOf(item);
   let html = '<div class="card-meta">';
-  html += branches.length ? branchesMarkup(item) + hoursMarkup(hoursOf(item), true, inCard)
-    : metaMarkup(item, true, true, inCard);
-  if (branches.length) {
-    // A chain's phone and website belong to the chain, not to one branch.
-    const shown = asShown(item);
-    if (shown.phone) html += '<div class="meta-row">' + icon("phone") + "<span>" + esc(shown.phone) + "</span></div>";
-    const site = safeUrl(item.website);
-    if (site) {
-      html += '<div class="meta-row">' + icon("globe") +
-        '<span><a href="' + esc(site) + '" target="_blank" rel="noopener noreferrer">' +
-        esc(site.replace(/^https?:\/\//, "").replace(/\/$/, "")) + "</a></span></div>";
-    }
-  }
+  html += metaMarkup(item, true, true, inCard);
   if (km !== null) {
     html += '<div class="meta-row">' + icon("crosshair") +
       "<span>" + esc(formatDistance(km)) + "</span></div>";
   }
-  if (!inCard) html += chainHintMarkup(item);
   html += menuRowMarkup(item);
   const source = safeUrl(item.source_url);
   if (source) {
@@ -690,8 +613,6 @@ function cardMarkup(item) {
   html += "</div>" + favoriteButtonMarkup(item) + "</div>";
 
   html += statusMarkup(item);
-  const hint = chainHintMarkup(item);
-  if (hint) html += '<div class="card-meta card-hint">' + hint + "</div>";
   if (openCards.has(item.id)) html += moreMarkup(item);
   html += cardPhotosMarkup(item);
   html += notesMarkup(item);
@@ -708,7 +629,7 @@ const openCards = new Set();
 function statusMarkup(item) {
   const bits = [];
   const now = new Date();
-  const parsed = parseOpeningHours(hoursOf(item));
+  const parsed = parseOpeningHours(item.opening_hours);
   const open = openNow(parsed, now);
   if (open !== null) {
     bits.push('<span class="status-' + (open ? "open" : "shut") + '"><span class="badge-dot"></span>' +
@@ -718,9 +639,7 @@ function statusMarkup(item) {
   }
   const km = distanceKm(item);
   if (km !== null) bits.push(esc(formatDistance(km).replace(/ away$/, "")));
-  const branches = branchesOf(item);
-  if (branches.length) bits.push(branches.length + " branches");
-  else if (item.city) bits.push(esc(item.city));
+  if (item.city) bits.push(esc(item.city));
   else if (item.address) bits.push(esc(item.address));
   const expanded = openCards.has(item.id);
   return '<button type="button" class="card-status" data-act="more" data-id="' + esc(item.id) +
@@ -771,16 +690,14 @@ const openRows = new Set();
 function rowMarkup(item) {
   const open = openRows.has(item.id);
   const cuisine = prettyCuisine(item.cuisine);
-  const nowOpen = openNow(parseOpeningHours(hoursOf(item)), new Date());
+  const nowOpen = openNow(parseOpeningHours(item.opening_hours), new Date());
   const km = distanceKm(item);
 
-  const branches = branchesOf(item);
   const bits = [];
   if (nowOpen !== null) {
     bits.push('<span class="row-open' + (nowOpen ? "" : " is-shut") + '">' + (nowOpen ? "Open" : "Closed") + "</span>");
   }
   if (item.rating) bits.push('<span class="row-rating">' + icon("star", "on") + item.rating + "</span>");
-  if (branches.length) bits.push(branches.length + " branches");
   if (cuisine) bits.push('<span class="row-cuisine">' + esc(cuisine) + "</span>");
   if (item.price) bits.push(priceStatic(item.price));
   if (item.city) bits.push(esc(item.city));
@@ -1011,11 +928,11 @@ function refreshFilterOptions() {
 
 /* ---------- map ---------- */
 
-function popupMarkup(item, branch) {
+function popupMarkup(item) {
   const bits = ['<strong>' + (item.favorite ? "★ " : "") + esc(item.name) + "</strong>"];
   const cuisine = prettyCuisine(item.cuisine);
   if (cuisine) bits.push(esc(cuisine));
-  const parsed = parseOpeningHours((branch && branch.opening_hours) || hoursOf(item));
+  const parsed = parseOpeningHours(item.opening_hours);
   const open = openNow(parsed, new Date());
   if (open !== null) {
     const change = nextChange(parsed, new Date());
@@ -1023,9 +940,7 @@ function popupMarkup(item, branch) {
   }
   if (item.rating) bits.push("★".repeat(item.rating));
   if (item.price) bits.push("₪".repeat(item.price));
-  const where = branch ? branch.address || branch.city : item.address;
-  if (where) bits.push(esc(where));
-  if (branch) bits.push("One of " + branchesOf(item).length + " branches");
+  if (item.address) bits.push(esc(item.address));
   return bits.join("<br>");
 }
 
@@ -1119,11 +1034,14 @@ function renderGoogleUsage() {
   const sheet = $("settings-usage");
   page.hidden = false;
   if (!g.configured) {
+    // Google is an upgrade, offered once where it's seen and easy to put away.
+    page.hidden = !!readSetting("google-offer-hidden", false);
     page.innerHTML = '<div class="usage-off">' + icon("map") +
-      "<p><strong>Using free OpenStreetMap.</strong> Connect Google Maps for better " +
-      "restaurant coverage — it stops itself before it could cost money.</p>" +
-      '<button type="button" class="btn btn-ghost btn-sm" data-open-settings>' +
-      "Connect Google Maps</button></div>";
+      "<p><strong>Free search is on.</strong> Want opening hours, ratings and recommendations? " +
+      "Google Maps is an optional upgrade, free for a diary like this.</p>" +
+      '<button type="button" class="btn btn-ghost btn-sm" data-open-guide>Add Google Maps</button>' +
+      '<button type="button" class="btn-icon" data-hide-offer title="Not now" aria-label="Not now">' +
+      icon("x") + "</button></div>";
     sheet.hidden = true;
     sheet.innerHTML = "";
     return;
@@ -1147,7 +1065,7 @@ function renderGoogleSettings() {
         : "on this device.") + " You don't need to enter it again.</div>"
     : "";
   $("google-hint").hidden = connected;
-  $("google-key-label").textContent = connected ? "Replace key" : "API key";
+  $("google-key-label").textContent = connected ? "Replace key" : "Already have a key?";
   $("google-key").placeholder = connected ? "Only if you want to change it" : "AIza…";
   $("google-save").textContent = connected ? "Save new key" : "Save key";
   $("google-error").hidden = true;
@@ -1237,6 +1155,79 @@ async function saveGoogleSettings(remove) {
   toast(remove ? "Google Maps disconnected." : "Google Maps key saved.");
   if (state.view === "map") render();
 }
+
+/* ---------- adding Google Maps, step by step ---------- */
+
+function openGuide() {
+  $("guide-site").textContent = SITE_URL + "*";
+  $("guide-result").hidden = true;
+  $("guide-key").value = "";
+  $("guide-connect").disabled = false;
+  $("guide-connect").textContent = "Connect";
+  openLayer("guide-modal", closeGuide);
+}
+
+function closeGuide() {
+  closeLayer("guide-modal");
+}
+
+function guideResult(html, good) {
+  const box = $("guide-result");
+  box.className = "guide-result " + (good ? "is-good" : "is-bad");
+  box.innerHTML = html;
+  box.hidden = false;
+}
+
+async function connectFromGuide() {
+  const key = $("guide-key").value.trim();
+  if (!key) {
+    $("guide-key").focus();
+    return;
+  }
+  const button = $("guide-connect");
+  button.disabled = true;
+  button.innerHTML = spinnerMarkup() + "Trying it…";
+  $("guide-result").hidden = true;
+  try {
+    await testGoogleKey(key);
+    await saveGoogleKey(key);
+    applyGoogleStatus();
+    if (!$("settings-modal").hidden) renderGoogleSettings();
+    if (state.view === "map") render();
+    guideResult(icon("check") + "<div><strong>Connected.</strong> Search, opening hours and Recommend now use " +
+      "Google Maps" + (cloud.diary ? ", for everyone in your diary" : "") + ".</div>" +
+      '<button type="button" class="btn btn-primary btn-sm" id="guide-done">Done</button>', true);
+  } catch (err) {
+    applyGoogleStatus();
+    const why = err.message.replace(" Check it in Settings.", " Check that it was copied whole.");
+    guideResult(icon("x") + "<div><strong>Not yet.</strong> " + esc(why) +
+      " Then press Connect again.</div>", false);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Connect";
+  }
+}
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest("[data-open-guide]")) {
+    openGuide();
+  } else if (event.target.closest("[data-hide-offer]")) {
+    writeSetting("google-offer-hidden", true);
+    $("google-usage").hidden = true;
+    toast("Put away. Google Maps is always in Settings.");
+  }
+});
+$("close-guide").addEventListener("click", closeGuide);
+$("guide-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  connectFromGuide();
+});
+$("guide-copy").addEventListener("click", async () => {
+  toast(await copyText(SITE_URL + "*") ? "Address copied." : "Couldn't copy — select it and copy.");
+});
+$("guide-result").addEventListener("click", (event) => {
+  if (event.target.closest("#guide-done")) closeGuide();
+});
 
 /* ---------- installing on a phone ---------- */
 
@@ -1426,10 +1417,6 @@ function copyOf(item, withTake) {
   COPY_FIELDS.forEach((key) => {
     if (item[key]) place[key] = item[key];
   });
-  if (item.chain && Array.isArray(item.branches) && item.branches.length) {
-    place.chain = true;
-    place.branches = item.branches.slice(0, 300);
-  }
   const menu = item.menu && safeUrl(item.menu.url);
   if (menu) place.menu_url = menu;
   if (withTake) {
@@ -1517,8 +1504,8 @@ function renderSend() {
         '<span class="send-count">' + choice.items.length + "</span></label>").join("") + "</fieldset>";
   }
   const anyVisited = items.some((item) => item.status === "visited");
-  html += '<label class="chain-option send-take"><input type="checkbox" id="send-take" checked>' +
-    '<span class="chain-text"><strong>Include my ' + (anyVisited ? "ratings and notes" : "notes") + "</strong>" +
+  html += '<label class="check-option send-take"><input type="checkbox" id="send-take" checked>' +
+    '<span class="check-text"><strong>Include my ' + (anyVisited ? "ratings and notes" : "notes") + "</strong>" +
     '<span class="field-help">So they know why it’s worth going.</span></span></label>' +
     '<div class="field"><label class="field-label" for="send-from">Your name ' +
     '<span class="optional">(so they know who it’s from)</span></label>' +
@@ -1636,18 +1623,6 @@ function cleanCopy(raw) {
     price: Math.min(5, Math.max(0, Math.round(number(raw.price)))),
   };
   if (!place.name) return null;
-  if (raw.chain && Array.isArray(raw.branches)) {
-    const branches = raw.branches.slice(0, 300).filter((b) => b && typeof b === "object").map((b) => ({
-      name: text(b.name, 200), address: text(b.address), city: text(b.city, 120),
-      lat: coordinate(b.lat), lon: coordinate(b.lon), opening_hours: text(b.opening_hours, 600),
-      phone: text(b.phone, 40), osm_id: b.osm_id ? text(b.osm_id, 30) : null,
-      osm_type: b.osm_type ? text(b.osm_type, 10) : null, google_place_id: text(b.google_place_id, 200),
-    }));
-    if (branches.length) {
-      place.chain = true;
-      place.branches = branches;
-    }
-  }
   const menu = safeUrl(raw.menu_url);
   if (menu) place.menu = { url: menu };
   const take = raw.take && typeof raw.take === "object" ? raw.take : null;
@@ -1739,8 +1714,7 @@ function renderImport() {
   }
   html += '<ul class="import-list">' + places.map((place, index) => {
     const saved = findDuplicates(place)[0];
-    const meta = [typesOf(place)[0], place.city,
-      place.chain && place.branches ? place.branches.length + " branches" : ""].filter(Boolean).join(" · ");
+    const meta = [typesOf(place)[0], place.city].filter(Boolean).join(" · ");
     return '<li><label class="import-row' + (saved ? " is-saved" : "") + '">' +
       '<input type="checkbox" data-index="' + index + '"' + (incoming.picked.has(index) ? " checked" : "") +
       (saved ? " disabled" : "") + ">" +
@@ -1782,7 +1756,6 @@ function importPicked() {
       dishes: [],
       photos: [],
     };
-    if (item.chain) item.branches_at = nowIso();
     saveItem(item);
   });
   closeImport();
@@ -1831,6 +1804,8 @@ function openLayer(id, close, guard) {
   clearTimeout(closingLayers.get(id));
   closingLayers.delete(id);
   $(id).classList.remove("is-closing");
+  // Each dialog opens above the ones already open, wherever it sits in the page.
+  $(id).style.zIndex = String(60 + layers.length);
   $(id).hidden = false;
   document.body.classList.add("has-sheet");
   layers.push({ id, close, guard });
@@ -2091,7 +2066,7 @@ function addressParts(text, cities) {
 
 // The same street and house number, however each was written: "3 Ahad Ha'Am
 // St., Tel Aviv" and "Ahad HaAm 3" are one address; "Dizengoff 100" and
-// "Dizengoff 50" are two branches.
+// "Dizengoff 50" are two places.
 function sameAddress(a, b, cities) {
   const one = addressParts(a, cities);
   const two = addressParts(b, cities);
@@ -2110,9 +2085,9 @@ function sameIds(a, b) {
     (a.osm_type || "") === (b.osm_type || ""));
 }
 
-// The same name is not enough — branches of a chain all share it. It's the
-// same place only when the address matches too, or when the two pins sit on
-// the same doorstep (one address in Hebrew and one in English, say).
+// The same name is not enough — two places can share one. It's the same place
+// only when the address matches too, or when the two pins sit on the same
+// doorstep (one address in Hebrew and one in English, say).
 function samePlace(place, other) {
   const address = place.address || place.full_address || "";
   const lat = parseFloat(place.lat);
@@ -2133,171 +2108,18 @@ function samePlace(place, other) {
 function findDuplicates(place) {
   const names = [place.name, place.local_name].map(normalizeName).filter(Boolean);
   return state.items.filter((item) => {
-    // A chain is at each of its branches as much as at its own address.
-    const spots = [item].concat(branchesOf(item));
-    if (spots.some((spot) => sameIds(place, spot))) return true;
+    if (sameIds(place, item)) return true;
     // A Google suggestion has no location yet, so a name alone would flag every
-    // branch of a chain; the full check runs once its details are loaded.
+    // place of that name; the full check runs once its details are loaded.
     if (place.needs_details) return false;
     const itemNames = [item.name, item.local_name].map(normalizeName).filter(Boolean);
     if (!names.some((a) => itemNames.some((b) => namesMatch(a, b)))) return false;
-    return spots.some((spot) => samePlace(place, spot));
+    return samePlace(place, item);
   });
-}
-
-/** Also true for a branch of a chain that's already saved. */
-function alreadyInDiary(place) {
-  if (findDuplicates(place).length) return true;
-  const lat = parseFloat(place.lat);
-  const lon = parseFloat(place.lon);
-  if (!isFinite(lat) || !isFinite(lon)) return false;
-  return state.items.some((item) => branchesOf(item).some((branch) => {
-    const bLat = parseFloat(branch.lat);
-    const bLon = parseFloat(branch.lon);
-    return isFinite(bLat) && isFinite(bLon) &&
-      haversineKm({ lat: lat, lon: lon }, { lat: bLat, lon: bLon }) <= 0.15;
-  }));
-}
-
-/** The save button says what saving will do. */
-function showBranchChoice() {
-  if (!state.chainWith || !$("dup-warning").hidden) return;
-  $("save-place").textContent = $("branch-check").checked ? "Add as a branch" : "Save restaurant";
 }
 
 function listName(item) {
   return item.status === "visited" ? "your visits" : "your wishlist";
-}
-
-/* ---------- one chain, one entry ----------
-   Two places by the same name at different addresses are most likely branches
-   of one chain. The diary offers to keep them as a single entry, both when the
-   second one is added and for pairs that are already saved apart. */
-
-const nameParts = new Map();
-function partsOf(name) {
-  if (!nameParts.has(name)) nameParts.set(name, chainNameParts(name));
-  return nameParts.get(name);
-}
-
-function chainNames(place) {
-  return [place.name, place.local_name].filter(Boolean)
-    .flatMap((name) => partsOf(name).map((part) => part.key));
-}
-
-/** What the joined entry is called: the part of the name both listings share. */
-function chainTitle(item, other) {
-  const theirs = new Set(chainNames(other));
-  const shared = partsOf(item.name || "").find((part) => theirs.has(part.key));
-  return shared ? shared.text : item.name;
-}
-
-/** Other entries that look like branches of the same chain as `place`. */
-function chainMates(place, exceptId) {
-  const keys = chainNames(place);
-  if (!keys.length) return [];
-  return state.items.filter((item) => item.id !== exceptId &&
-    chainNames(item).some((key) => keys.includes(key)));
-}
-
-function branchFrom(place) {
-  return {
-    name: place.name || "", address: place.address || "", city: place.city || "",
-    lat: place.lat || "", lon: place.lon || "", opening_hours: place.opening_hours || "",
-    phone: place.phone || "", osm_id: place.osm_id || null, osm_type: place.osm_type || null,
-    google_place_id: place.google_place_id || "",
-  };
-}
-
-/** The branches an entry stands for: its own list, or itself if it isn't a chain yet. */
-function branchesFor(item) {
-  return item.chain && Array.isArray(item.branches) && item.branches.length
-    ? item.branches.slice() : [branchFrom(item)];
-}
-
-/** What `into` takes on from `other` when the two become one entry. */
-function mergedChanges(into, other) {
-  const branches = branchesFor(into);
-  branchesFor(other).forEach((branch) => {
-    if (!branches.some((known) => sameIds(branch, known) || samePlace(branch, known))) branches.push(branch);
-  });
-  const changes = { chain: true, branches, branches_at: into.branches_at || nowIso() };
-  // "Pizza X - Neapolitan, Dizengoff" and "Pizza X - Rishon" become "Pizza X";
-  // each branch keeps its own full name.
-  const title = chainTitle(into, other);
-  if (title && title !== into.name) changes.name = title;
-  // Nothing either one says is lost: been to one branch is been to the chain.
-  if (other.status === "visited" && into.status !== "visited") {
-    changes.status = "visited";
-    changes.visited_at = other.visited_at || nowIso();
-  }
-  const join = (a, b) => [a, b].map((text) => (text || "").trim()).filter(Boolean)
-    .filter((text, i, all) => all.indexOf(text) === i).join("\n\n");
-  if (other.review) changes.review = join(into.review, other.review);
-  if (other.wish_note) changes.wish_note = join(into.wish_note, other.wish_note);
-  if ((other.dishes || []).length) changes.dishes = [...new Set((into.dishes || []).concat(other.dishes))];
-  if (other.favorite && !into.favorite) changes.favorite = true;
-  ["rating", "price", "website", "phone", "cuisine", "source_url", "google_maps_uri", "menu"].forEach((key) => {
-    if (!into[key] && other[key]) changes[key] = other[key];
-  });
-  return changes;
-}
-
-/** Makes an entry and the others by its name one chain. */
-function mergeChain(id) {
-  const item = state.items.find((i) => i.id === id);
-  if (!item) return;
-  const group = [item].concat(chainMates(item, id));
-  if (group.length < 2) return;
-  // Photos belong to the entry they were added to, so that one is the one kept.
-  const withPhotos = group.filter((i) => (i.photos || []).length);
-  if (withPhotos.length > 1) {
-    toast("Both " + item.name + " entries have photos, so they can't be joined yet — " +
-      "remove the photos from one of them first.");
-    return;
-  }
-  const keep = withPhotos[0] || group.find((i) => i.chain) || group.find((i) => i.status === "visited") || item;
-  const others = group.filter((i) => i !== keep);
-  if (!window.confirm("Make " + chainTitle(keep, others[0]) + " one entry with all " + group.length + " branches? " +
-      "Notes, reviews and ratings from each are kept on it.")) {
-    return;
-  }
-  let merged = keep;
-  let changes = {};
-  others.forEach((other) => {
-    const more = mergedChanges(merged, other);
-    changes = { ...changes, ...more };
-    merged = { ...merged, ...more };
-  });
-  updateItem(keep.id, changes);
-  others.forEach((other) => deleteItem(other.id));
-  // Show the joined entry where it now lives (a visit to one branch counts).
-  state.tab = merged.status;
-  syncTabs();
-  render();
-  toast(merged.name + " is one entry now, with " + merged.branches.length + " branches.");
-}
-
-/** "These just share a name": stop offering to join them. */
-function keepApart(id) {
-  const item = state.items.find((i) => i.id === id);
-  if (!item) return;
-  [item].concat(chainMates(item, id)).forEach((i) => updateItem(i.id, { chain_apart: true }));
-  render();
-}
-
-function chainHintMarkup(item) {
-  if (item.chain_apart) return "";
-  const mates = chainMates(item, item.id).filter((mate) => !mate.chain_apart);
-  if (!mates.length) return "";
-  const where = mates.map((mate) => esc(mate.address || mate.city || "another address") +
-    (mate.status !== item.status ? " (" + (mate.status === "visited" ? "been there" : "want to go") + ")" : ""));
-  return '<div class="meta-row chain-hint">' + icon("pin") + "<span>Also in your diary at " +
-    where.join(", ") + ". " +
-    '<button type="button" class="link-btn" data-act="merge" data-id="' + esc(item.id) +
-    '">Make it one chain</button> · ' +
-    '<button type="button" class="link-btn" data-act="apart" data-id="' + esc(item.id) +
-    '">Not the same place</button></span></div>';
 }
 
 function renderDuplicateWarning(place) {
@@ -2767,16 +2589,22 @@ function rememberSuggestions(key, memory) {
 }
 
 /** The next place nobody has been offered yet, and that isn't in the diary. */
-function nextSuggestion(key, memory) {
-  const pool = pools.get(key) || [];
-  for (const place of pool) {
+const SUGGEST_COUNT = 3;
+
+/** Up to `count` places nobody has been offered yet, and that aren't in the diary. */
+function nextSuggestions(key, memory, count) {
+  const picked = [];
+  for (const place of pools.get(key) || []) {
+    if (picked.length >= count) break;
     const id = place.google_place_id || place.name;
-    if (memory.seen.has(id) || alreadyInDiary(place)) continue;
-    memory.seen.add(id);
-    rememberSuggestions(key, memory);
-    return place;
+    if (!memory.seen.has(id) && !findDuplicates(place).length) picked.push(place);
   }
-  return null;
+  return picked;
+}
+
+function markSeen(key, memory, places) {
+  places.forEach((place) => memory.seen.add(place.google_place_id || place.name));
+  rememberSuggestions(key, memory);
 }
 
 function addToPool(key, places) {
@@ -2800,37 +2628,64 @@ function suggestWhereText() {
     (state.suggest.where === "me" ? "you" : point.label);
 }
 
-function showSuggestion(place) {
-  state.suggested = place;
+// Three at a time: enough to choose between, few enough to read on a phone.
+// Each says what it is, whether it's open, how far, and where; the rest waits
+// on the confirm step, as for any search result.
+function pickMarkup(place, index) {
   const kind = typeName(place.place_type) || "Restaurant";
-  // How far from the spot searched around, or from you when searching anywhere.
   const from = suggestArea() || state.origin;
-  const km = from ? haversineKm(
-    { lat: from.lat, lon: from.lon },
-    { lat: parseFloat(place.lat), lon: parseFloat(place.lon) },
-  ) : null;
+  const km = from ? haversineKm({ lat: from.lat, lon: from.lon },
+    { lat: parseFloat(place.lat), lon: parseFloat(place.lon) }) : null;
+  const facts = [esc(kind)];
+  if (place.price) facts.push(priceStatic(place.price));
+  if (place.google_rating) {
+    facts.push('<span class="pick-rating">' + icon("star", "on") + Number(place.google_rating).toFixed(1) +
+      (place.google_rating_count ? " (" + Number(place.google_rating_count).toLocaleString() + ")" : "") +
+      "</span>");
+  }
+  const now = new Date();
+  const parsed = parseOpeningHours(place.opening_hours);
+  const open = openNow(parsed, now);
+  const status = [];
+  if (open !== null) {
+    const change = nextChange(parsed, now);
+    status.push('<span class="status-' + (open ? "open" : "shut") + '"><span class="badge-dot"></span>' +
+      (open ? "Open" : "Closed") + "</span>" +
+      (change ? " · " + esc(change.charAt(0).toLowerCase() + change.slice(1)) : ""));
+  }
+  if (km !== null) status.push(esc(formatDistance(km)));
   const maps = safeUrl(place.google_maps_uri);
-  // The same facts a search result shows once it's picked.
-  suggestionBox('<div class="suggestion-head">' + icon("sparkle") +
-    "<span>Well known " + esc(suggestWhereText()) + "</span></div>" +
-    "<h3>" + esc(place.name) + "</h3>" +
-    '<p class="suggestion-where">' + esc(kind) + (place.price ? " · " + priceStatic(place.price) : "") +
-    (km !== null ? " · " + esc(formatDistance(km)) : "") + "</p>" +
-    '<div class="card-meta">' + metaMarkup(place, true) +
-    (maps ? '<div class="meta-row">' + icon("external") + '<span><a href="' + esc(maps) +
-      '" target="_blank" rel="noopener noreferrer">See it on Google Maps</a></span></div>' : "") +
-    "</div>" +
-    '<div class="suggestion-actions">' +
-    '<button type="button" class="btn btn-primary btn-sm" data-suggest="take">' + icon("plus") +
-    "Add this one</button>" +
-    '<button type="button" class="btn btn-ghost btn-sm" data-suggest="next">' + icon("refresh") +
-    "Another one</button></div>");
+  const where = place.address || place.full_address || "";
+  // The name and its Add button share the top line; the facts get the full width below.
+  return '<li class="pick" style="--n:' + index + '">' +
+    "<h4>" + esc(place.name) + "</h4>" +
+    '<button type="button" class="btn btn-primary btn-sm pick-add" data-suggest="take" data-index="' + index +
+    '" aria-label="Add ' + esc(place.name) + '">' + icon("plus") + "Add</button>" +
+    '<p class="pick-facts">' + facts.join('<span class="status-sep" aria-hidden="true"></span>') + "</p>" +
+    (status.length ? '<p class="pick-status">' + status.join(" · ") + "</p>" : "") +
+    (where || maps ? '<p class="pick-where">' + esc(where) +
+      (maps ? (where ? " · " : "") + '<a href="' + esc(maps) + '" target="_blank" rel="noopener noreferrer">Map</a>' : "") +
+      "</p>" : "") +
+    "</li>";
+}
+
+function showSuggestions(places) {
+  state.suggested = places;
+  const count = places.length;
+  suggestionBox('<div class="suggestion-head">' + icon("sparkle") + "<span>" +
+    (count === 1 ? "One well-known place " : count + " well-known places ") + esc(suggestWhereText()) +
+    "</span></div>" +
+    '<ul class="picks">' + places.map(pickMarkup).join("") + "</ul>" +
+    '<div class="suggestion-actions"><button type="button" class="btn btn-ghost btn-sm" data-suggest="next">' +
+    icon("refresh") + "Show " + SUGGEST_COUNT + " others</button></div>");
 }
 
 async function recommend() {
   if (!googleStatus().configured) {
-    suggestionBox('<p class="menu-message">Recommendations come from Google Maps. Connect it in ' +
-      "Settings (the gear at the top) and this will work.</p>");
+    suggestionBox('<p class="menu-message">Recommendations come from Google Maps, an optional upgrade ' +
+      "for the diary. It takes about 5 minutes, once.</p>" +
+      '<div class="suggestion-actions"><button type="button" class="btn btn-primary btn-sm" data-open-guide>' +
+      icon("map") + "Set up Google Maps</button></div>");
     return;
   }
   if (state.suggest.where !== "country" && !state.suggest.point) {
@@ -2840,21 +2695,22 @@ async function recommend() {
 
   const key = suggestKey();
   const memory = suggestMemory(key);
-  const ready = nextSuggestion(key, memory);
-  if (ready) {
-    showSuggestion(ready);
+  let picked = nextSuggestions(key, memory, SUGGEST_COUNT);
+  if (picked.length === SUGGEST_COUNT) {
+    markSeen(key, memory, picked);
+    showSuggestions(picked);
     return;
   }
 
-  suggestionBox('<p class="menu-status">' + spinnerMarkup() + "Looking for a good place " +
+  suggestionBox('<p class="menu-status">' + spinnerMarkup() + "Looking for good places " +
     esc(suggestWhereText()) + "…</p>");
   const button = $("suggest-btn");
   button.disabled = true;
   button.setAttribute("aria-busy", "true");
   try {
-    // Ask a different way until something new comes back (or it's clear this
-    // corner has been mined out for now).
-    for (let tries = 0; tries < 3; tries += 1) {
+    // Ask a different way until three new places are in hand (or it's clear
+    // this corner has been mined out for now).
+    for (let tries = 0; tries < 3 && picked.length < SUGGEST_COUNT; tries += 1) {
       const query = suggestQuery(memory.angle);
       memory.angle += 1;
       rememberSuggestions(key, memory);
@@ -2862,11 +2718,12 @@ async function recommend() {
         area: suggestArea(), includedType: suggestKind().included,
       }));
       applyGoogleStatus();
-      const place = nextSuggestion(key, memory);
-      if (place) {
-        showSuggestion(place);
-        return;
-      }
+      picked = nextSuggestions(key, memory, SUGGEST_COUNT);
+    }
+    if (picked.length) {
+      markSeen(key, memory, picked);
+      showSuggestions(picked);
+      return;
     }
     memory.seen = new Set();
     memory.angle = 0;
@@ -3174,39 +3031,6 @@ function showConfirm(place) {
     });
   }
 
-  // Another branch of a place already saved: offer to keep them as one entry.
-  const duplicates = findDuplicates(place);
-  const mates = manual ? [] : chainMates(place, null).filter((mate) => !duplicates.includes(mate));
-  state.chainWith = mates.find((mate) => mate.chain) || mates[0] || null;
-  $("branch-option").hidden = !state.chainWith;
-  if (state.chainWith) {
-    const mate = state.chainWith;
-    const count = branchesFor(mate).length + 1;
-    $("branch-check").checked = !mate.chain_apart;
-    $("branch-title").textContent = "Add as another branch of " + chainTitle(mate, place);
-    $("branch-help").textContent = mate.name + " is already in " + listName(mate) +
-      (mate.chain ? " with " + branchesFor(mate).length + " branches"
-        : " (" + (mate.address || mate.city || "another address") + ")") +
-      ". This keeps one entry with " + count + " branches, and Near me uses the closest.";
-    showBranchChoice();
-  }
-
-  // Chains: ask the built-in Israeli list whether this name is in many places.
-  state.branches = [];
-  $("chain-option").hidden = true;
-  $("chain-check").checked = false;
-  if (!manual && place.name && !state.chainWith) {
-    const country = place.country_code || state.searchCountry || HOME_COUNTRY;
-    findBranches(place.name, country).then((branches) => {
-      if (state.selectedPlace !== place || branches.length < 3) return;
-      state.branches = branches;
-      $("chain-title").textContent = "Save as one chain (" + branches.length + " places)";
-      $("chain-help").textContent = "Keeps a single " + place.name + " in the diary and remembers " +
-        "where every branch is, so Near me points at the closest one.";
-      $("chain-option").hidden = false;
-    }).catch(() => { /* no list for this country */ });
-  }
-
   state.draftPrice = place.price || 0;
   $("price-help").textContent = manual
     ? "Optional — tap again to clear."
@@ -3288,19 +3112,6 @@ async function savePlace() {
 
   if (!item.name) { toast("Give the restaurant a name first."); return; }
 
-  const mate = state.chainWith && $("branch-check").checked ? store.get(state.chainWith.id) : null;
-  if (mate) {
-    fillPersonal(item, status);
-    await saveAsBranch(mate, item);
-    return;
-  }
-
-  if ($("chain-check").checked && state.branches.length) {
-    item.chain = true;
-    item.branches = state.branches;
-    item.branches_at = nowIso();
-  }
-
   fillPersonal(item, status);
 
   const button = $("save-place");
@@ -3344,30 +3155,6 @@ function fillPersonal(item, status) {
   } else {
     item.wish_note = $("wish-note").value.trim();
   }
-}
-
-/** The new place joins an entry already saved, as one more of its branches. */
-async function saveAsBranch(mate, item) {
-  const changes = mergedChanges(mate, item);
-  updateItem(mate.id, changes);
-
-  const button = $("save-place");
-  const buttonText = button.textContent;
-  let upload = null;
-  if (item.status === "visited" && state.pendingPhotos.length) {
-    button.disabled = true;
-    upload = await addPhotos(mate.id, state.pendingPhotos.map((p) => p.file), (n, total) => {
-      button.textContent = "Saving photo " + n + " of " + total + "…";
-    });
-    button.textContent = buttonText;
-    button.disabled = false;
-  }
-
-  closeAdd();
-  state.tab = changes.status || mate.status;
-  syncTabs();
-  if (upload && upload.failures.length) reportUpload(upload);
-  else toast((changes.name || mate.name) + " now has " + changes.branches.length + " branches in one entry.");
 }
 
 /* ---------- review modal ---------- */
@@ -3455,37 +3242,7 @@ function detailsStatus() {
 function detailsValues() {
   return JSON.stringify([
     ...Object.keys(DETAIL_FIELDS).map((id) => $(id).value.trim()), state.detailsPrice, detailsStatus(),
-    $("d-chain").checked, state.detailsBranches.length,
   ]);
-}
-
-function showChainHelp() {
-  const count = state.detailsBranches.length;
-  $("d-chain-help").textContent = count
-    ? count + " branch" + (count === 1 ? "" : "es") + " known. Near me and the map use the closest one."
-    : "None known yet. “Find its branches” looks them up — free in Israel, one Google " +
-      "search elsewhere.";
-  $("d-chain").disabled = !count;
-}
-
-async function findBranchesFor(name, item) {
-  const country = state.searchCountry || HOME_COUNTRY;
-  const local = await findBranches(name, country);
-  if (local.length) return local;
-  if (!googleStatus().configured) return [];
-  // Outside Israel there's no built-in list, so this is one Google search.
-  const places = await findBranchesOnline(name, country, item.city || item.country || "");
-  const wanted = chainKey(name);
-  return places.filter((place) => chainKey(place.name) === wanted).map((place) => ({
-    name: place.name,
-    address: place.address || "",
-    city: place.city || "",
-    lat: place.lat,
-    lon: place.lon,
-    opening_hours: "",
-    phone: "",
-    google_place_id: place.google_place_id || "",
-  }));
 }
 
 // Opening hours are written the way the map data writes them, so the box says
@@ -3523,9 +3280,6 @@ function openDetails(id) {
   $("d-note-field").hidden = status === "visited";
   state.detailsPrice = item.price || 0;
   buildShekels("d-price", "detailsPrice");
-  state.detailsBranches = branchesOf(item).slice();
-  $("d-chain").checked = !!item.chain;
-  showChainHelp();
   $("d-error").hidden = true;
   showHoursPreview();
   detailsSnapshot = detailsValues();
@@ -3578,12 +3332,8 @@ function saveDetails() {
     return;
   }
 
-  const chain = $("d-chain").checked && state.detailsBranches.length > 0;
   const status = detailsStatus();
   const changes = {
-    chain,
-    branches: chain ? state.detailsBranches : undefined,
-    branches_at: chain ? (item.branches_at || nowIso()) : undefined,
     source_url: source,
     name,
     local_name: $("d-local").value.trim(),
@@ -3611,44 +3361,6 @@ function saveDetails() {
   }
   render();
   toast("Saved.");
-}
-
-/* ---------- a chain's branches ---------- */
-
-function openBranches(id) {
-  const item = store.get(id);
-  if (!item) return;
-  const now = new Date();
-  const list = branchesOf(item).map((branch) => ({
-    branch,
-    km: state.origin ? haversineKm(state.origin, {
-      lat: parseFloat(branch.lat), lon: parseFloat(branch.lon),
-    }) : null,
-  }));
-  if (state.origin) list.sort((a, b) => a.km - b.km);
-
-  $("branches-title").textContent = item.name;
-  $("branches-body").innerHTML = "<p class=\"hint\">" + list.length + " branch" +
-    (list.length === 1 ? "" : "es") + (item.branches_at
-      ? ", found " + esc(new Date(item.branches_at).toLocaleDateString()) : "") + ".</p>" +
-    '<ul class="branch-list">' + list.map(({ branch, km }) => {
-      const open = openNow(parseOpeningHours(branch.opening_hours), now);
-      const bits = [];
-      if (km !== null) bits.push(esc(formatDistance(km)));
-      if (open !== null) bits.push(open ? "open now" : "closed now");
-      if (branch.phone) bits.push(esc(branch.phone));
-      return "<li><span><strong>" + esc(branch.address || branch.city || item.name) + "</strong>" +
-        (bits.length ? '<span class="branch-meta">' + bits.join(" · ") + "</span>" : "") + "</span>" +
-        '<a class="btn-icon" href="https://www.google.com/maps/search/?api=1&query=' +
-        encodeURIComponent(branch.lat + "," + branch.lon) + '" target="_blank" ' +
-        'rel="noopener noreferrer" title="Show on the map" aria-label="Show this branch on the map">' +
-        icon("external") + "</a></li>";
-    }).join("") + "</ul>";
-  openLayer("branches-modal", closeBranches);
-}
-
-function closeBranches() {
-  closeLayer("branches-modal");
 }
 
 /* ---------- photos ---------- */
@@ -4009,7 +3721,6 @@ setInterval(() => {
   lastVisibleIds = ids;
 }, 60000);
 $("save-place").addEventListener("click", savePlace);
-$("branch-check").addEventListener("change", showBranchChoice);
 
 $("place-search").addEventListener("input", (event) => {
   const query = event.target.value.trim();
@@ -4208,7 +3919,7 @@ $("suggestion").addEventListener("click", (event) => {
     recommend();
     return;
   }
-  const place = state.suggested;
+  const place = (state.suggested || [])[Number(button.dataset.index)];
   if (place) showConfirm(place);
 });
 
@@ -4246,28 +3957,6 @@ $("details-form").addEventListener("submit", (event) => {
   saveDetails();
 });
 $("d-hours").addEventListener("input", showHoursPreview);
-$("close-branches").addEventListener("click", closeBranches);
-$("d-find-branches").addEventListener("click", async () => {
-  const item = detailsId && store.get(detailsId);
-  if (!item) return;
-  const button = $("d-find-branches");
-  const original = button.innerHTML;
-  button.disabled = true;
-  button.textContent = "Looking…";
-  try {
-    const found = await findBranchesFor($("d-name").value.trim() || item.name, item);
-    state.detailsBranches = found;
-    if (found.length > 1) $("d-chain").checked = true;
-    applyGoogleStatus();
-    showChainHelp();
-    if (!found.length) toast("No other branches found under that name.");
-  } catch (err) {
-    toast("Couldn't look for branches: " + err.message);
-  } finally {
-    button.innerHTML = original;
-    button.disabled = false;
-  }
-});
 document.querySelectorAll('input[name="d-status"]').forEach((radio) => {
   radio.addEventListener("change", () => { $("d-note-field").hidden = detailsStatus() === "visited"; });
 });
@@ -4291,9 +3980,6 @@ $("list").addEventListener("click", (event) => {
     cardAction(action, trigger.dataset.id, trigger);
   } else if (action === "favorite") toggleFavorite(trigger.dataset.id);
   else if (action === "photo") openLightbox(trigger.dataset.id, Number(trigger.dataset.index));
-  else if (action === "branches") openBranches(trigger.dataset.id);
-  else if (action === "merge") mergeChain(trigger.dataset.id);
-  else if (action === "apart") keepApart(trigger.dataset.id);
   else if (action === "expand") toggleRow(trigger.dataset.id);
 });
 

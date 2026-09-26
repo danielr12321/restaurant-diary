@@ -357,22 +357,6 @@
         <div class="dup-warning" id="dup-warning" role="alert" hidden></div>
         <div class="preview" id="preview"></div>
 
-        <label class="chain-option branch-option" id="branch-option" hidden>
-          <input type="checkbox" id="branch-check" checked>
-          <span class="chain-text">
-            <strong id="branch-title">Add as another branch</strong>
-            <span class="field-help" id="branch-help"></span>
-          </span>
-        </label>
-
-        <label class="chain-option" id="chain-option" hidden>
-          <input type="checkbox" id="chain-check">
-          <span class="chain-text">
-            <strong id="chain-title">Save as one chain</strong>
-            <span class="field-help" id="chain-help"></span>
-          </span>
-        </label>
-
         <fieldset class="choice">
           <legend>Have you been?</legend>
           <div class="choice-row">
@@ -562,19 +546,6 @@
         <span class="field-help">The menu is searched on this site.</span>
       </div>
       <div class="field">
-        <label class="chain-option">
-          <input type="checkbox" id="d-chain">
-          <span class="chain-text">
-            <strong>A chain with several branches</strong>
-            <span class="field-help" id="d-chain-help"></span>
-          </span>
-        </label>
-        <button type="button" class="btn btn-ghost btn-sm" id="d-find-branches">
-          <svg class="icon" aria-hidden="true"><use href="#i-pin"/></svg> Find its branches
-        </button>
-      </div>
-
-      <div class="field">
         <label class="field-label" for="d-source">Link you saved it from <span class="optional">(optional)</span></label>
         <input type="text" id="d-source" inputmode="url" autocomplete="off" spellcheck="false"
                placeholder="instagram.com/reel/…">
@@ -594,19 +565,6 @@
       <button type="submit" class="btn btn-primary" id="save-details">Save</button>
     </div>
   </form>
-</div>
-
-<!-- A chain's branches -->
-<div class="modal-backdrop" id="branches-modal" hidden>
-  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="branches-title">
-    <div class="modal-head">
-      <h2 id="branches-title">Branches</h2>
-      <button type="button" class="btn-icon" id="close-branches" aria-label="Close">
-        <svg class="icon"><use href="#i-x"/></svg>
-      </button>
-    </div>
-    <div class="modal-body" id="branches-body"></div>
-  </div>
 </div>
 
 <!-- Menu -->
@@ -681,6 +639,85 @@
   </div>
 </div>
 
+<!-- Adding Google Maps, step by step -->
+<div class="modal-backdrop" id="guide-modal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="guide-title">
+    <div class="modal-head">
+      <h2 id="guide-title">Add Google Maps</h2>
+      <button type="button" class="btn-icon" id="close-guide" aria-label="Close">
+        <svg class="icon"><use href="#i-x"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="hint">Optional, and done once. Sharing a diary? Only one of you needs to do it — the key is
+        shared with everyone in it.</p>
+      <ol class="guide-steps">
+        <li>
+          <span class="guide-num" aria-hidden="true">1</span>
+          <div>
+            <strong>Make a Google Cloud project</strong>
+            <p>Sign in with any Google account and create a project. Any name will do, like “Diary”.</p>
+            <a class="btn btn-ghost btn-sm" href="https://console.cloud.google.com/projectcreate" target="_blank"
+               rel="noopener noreferrer">Open Google Cloud <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+          </div>
+        </li>
+        <li>
+          <span class="guide-num" aria-hidden="true">2</span>
+          <div>
+            <strong>Add a billing account</strong>
+            <p>Google asks for a card even for free use. The diary stops itself at 90% of Google's free monthly
+              allowance, so it can't cost money.</p>
+            <a class="btn btn-ghost btn-sm" href="https://console.cloud.google.com/billing" target="_blank"
+               rel="noopener noreferrer">Open billing <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+          </div>
+        </li>
+        <li>
+          <span class="guide-num" aria-hidden="true">3</span>
+          <div>
+            <strong>Turn on two services</strong>
+            <p>Open each one and press <b>Enable</b>.</p>
+            <div class="guide-links">
+              <a class="btn btn-ghost btn-sm" href="https://console.cloud.google.com/apis/library/places.googleapis.com"
+                 target="_blank" rel="noopener noreferrer">Places API (New) <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+              <a class="btn btn-ghost btn-sm" href="https://console.cloud.google.com/apis/library/maps-backend.googleapis.com"
+                 target="_blank" rel="noopener noreferrer">Maps JavaScript API <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+            </div>
+          </div>
+        </li>
+        <li>
+          <span class="guide-num" aria-hidden="true">4</span>
+          <div>
+            <strong>Create a key, locked to this site</strong>
+            <p>Choose <b>Create credentials → API key</b>. Open the new key: under <b>Website restrictions</b>
+              add the address below, and under <b>API restrictions</b> pick the two services from step 3.</p>
+            <div class="guide-site-row">
+              <code class="guide-site" id="guide-site"></code>
+              <button type="button" class="btn btn-ghost btn-sm" id="guide-copy">
+                <svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg> Copy
+              </button>
+            </div>
+            <a class="btn btn-ghost btn-sm" href="https://console.cloud.google.com/apis/credentials" target="_blank"
+               rel="noopener noreferrer">Open credentials <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+          </div>
+        </li>
+        <li>
+          <span class="guide-num" aria-hidden="true">5</span>
+          <div>
+            <strong>Paste the key here</strong>
+            <p>The diary tries it once before keeping it.</p>
+            <form class="guide-form" id="guide-form" autocomplete="off">
+              <label class="sr-only" for="guide-key">Google API key</label>
+              <input type="text" id="guide-key" spellcheck="false" placeholder="AIza…" autocomplete="off">
+              <button type="submit" class="btn btn-primary btn-sm" id="guide-connect">Connect</button>
+            </form>
+            <div class="guide-result" id="guide-result" role="status" hidden></div>
+          </div>
+        </li>
+      </ol>
+    </div>
+  </div>
+</div>
+
 <!-- Settings -->
 <div class="modal-backdrop" id="settings-modal" hidden>
   <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="settings-title">
@@ -712,11 +749,16 @@
       <section class="settings-section" aria-labelledby="google-title">
         <h3 class="settings-heading" id="google-title">Google Maps</h3>
         <div class="google-state" id="google-state" role="status" hidden></div>
-        <p class="hint" id="google-hint">Google Maps gives better restaurant search and the map. Paste an API key
-          from the Google Cloud console. It stops itself before it could cost money.</p>
+        <div class="google-offer" id="google-hint">
+          <p><strong>Optional.</strong> Without it the diary searches OpenStreetMap, free. Google Maps adds
+            opening hours, ratings, better search, and Recommend — free for a diary like this.</p>
+          <button type="button" class="btn btn-primary btn-sm" data-open-guide>
+            <svg class="icon" aria-hidden="true"><use href="#i-map"/></svg> Set it up — about 5 minutes
+          </button>
+        </div>
         <form id="google-form" class="google-form">
           <div class="field">
-            <label class="field-label" for="google-key" id="google-key-label">API key</label>
+            <label class="field-label" for="google-key" id="google-key-label">Already have a key?</label>
             <input type="text" id="google-key" autocomplete="off" spellcheck="false" placeholder="AIza…">
             <span class="field-help">Turn on "Maps JavaScript API" and "Places API (New)" for the key, and
               restrict it to this website: <code id="google-site"></code></span>

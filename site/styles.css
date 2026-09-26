@@ -596,30 +596,17 @@ select {
 }
 .result.is-loading { opacity: .6; cursor: progress; }
 
-/* ---------- Chains ---------- */
+/* ---------- A tick-box with an explanation ---------- */
 
-.chain-option {
+.check-option {
   display: flex; align-items: flex-start; gap: var(--space-2);
   margin-bottom: var(--space-3); padding: var(--space-3);
   border: 1px solid var(--color-border-strong); border-radius: var(--radius);
   background: var(--color-card); cursor: pointer;
 }
-.chain-option input { width: 20px; height: 20px; margin-top: 2px; flex: none; accent-color: var(--color-primary); }
-.chain-text { min-width: 0; }
-.chain-text .field-help { margin-top: 2px; }
-.branch-more { margin-left: 6px; }
-.branch-option { border-color: var(--c-warm-border); background: var(--color-accent-soft); }
-.chain-hint { color: var(--c-warm-text); }
-.chain-hint .link-btn[data-act="merge"] { color: var(--color-primary); font-weight: 600; }
-
-.branch-list { list-style: none; margin: 0; padding: 0; }
-.branch-list li {
-  display: flex; align-items: center; gap: var(--space-2);
-  padding: 10px 0; border-bottom: 1px solid var(--color-border);
-}
-.branch-list li:last-child { border-bottom: 0; }
-.branch-list span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
-.branch-meta { display: block; font-size: 13px; color: var(--color-muted-foreground); }
+.check-option input { width: 20px; height: 20px; margin-top: 2px; flex: none; accent-color: var(--color-primary); }
+.check-text { min-width: 0; }
+.check-text .field-help { margin-top: 2px; }
 
 /* ---------- Recommend one ---------- */
 
@@ -749,6 +736,24 @@ select {
 /* The same facts as a search result, lined up under the name rather than indented. */
 .suggestion .card-meta { padding: 0; margin-top: 12px; }
 .suggestion .menu-message, .suggestion .menu-status, .suggestion .menu-error { margin: 0; }
+
+/* The three suggestions: a line of facts, one of status, one of place, and an
+   Add button each. They arrive one after another. */
+.picks { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.pick {
+  display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 10px; padding: 12px;
+  border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-background);
+  animation: rise var(--t-slow) var(--ease) both; animation-delay: calc(var(--n, 0) * 50ms);
+}
+.pick h4 { margin: 0; min-width: 0; font-size: 16px; line-height: 1.3; overflow-wrap: anywhere; }
+.pick p { grid-column: 1 / -1; margin: 4px 0 0; font-size: 13px; color: var(--color-muted-foreground); }
+.pick-facts { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+.pick-facts .price-static { font-size: 12px; }
+.pick-rating { display: inline-flex; align-items: center; gap: 3px; font-weight: 600; color: var(--color-foreground); }
+.pick-rating .icon { width: 13px; height: 13px; color: var(--color-accent); fill: var(--color-accent); }
+.pick-where { overflow-wrap: anywhere; }
+.pick-where a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.pick-add { padding: 0 12px; min-height: 34px; }
 
 .share-source {
   display: flex; gap: var(--space-2); align-items: flex-start;
@@ -1564,7 +1569,7 @@ select {
     transition-property: opacity, color, background-color, border-color, box-shadow, fill !important;
     scroll-behavior: auto !important;
   }
-  .modal, .modal-backdrop, .toast, .card, .suggestion, .send-ready, .rec-area {
+  .modal, .modal-backdrop, .toast, .card, .suggestion, .send-ready, .rec-area, .pick {
     animation-name: fade !important; animation-duration: 160ms !important; animation-delay: 0s !important;
   }
   .modal-backdrop.is-closing, .modal-backdrop.is-closing .modal, .toast.is-leaving {
@@ -1684,7 +1689,6 @@ select {
   .card-status:hover .card-status-more { color: var(--color-primary); }
 }
 .card-status:focus-visible { outline: 2px solid var(--color-ring); outline-offset: -2px; border-radius: 8px; }
-.card-hint { padding-bottom: var(--space-2); }
 
 .card-more-empty { margin: 0; font-size: 14px; }
 
@@ -1869,3 +1873,50 @@ select {
 .theme-seg button { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .theme-seg .icon { width: 16px; height: 16px; flex: none; }
 .theme-hint { margin: 0; }
+
+/* ---------- Google Maps: the offer and the guide ---------- */
+
+.google-offer {
+  margin-bottom: var(--space-3); padding: 14px;
+  border: 1px solid var(--c-warm-border); border-radius: var(--radius); background: var(--color-accent-soft);
+}
+.google-offer p { margin: 0 0 12px; font-size: 14px; color: var(--c-warm-text); }
+.google-offer strong { color: var(--color-foreground); }
+.usage-off .btn-icon { width: 36px; height: 36px; flex: none; }
+
+.guide-steps { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-4); }
+.guide-steps > li { display: flex; gap: 12px; align-items: flex-start; }
+.guide-num {
+  flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-top: 1px;
+  border-radius: 50%; background: var(--color-accent-soft); color: var(--c-warm-label);
+  font-weight: 700; font-size: 14px; box-shadow: 0 0 0 1px var(--c-warm-border);
+}
+.guide-steps > li > div { min-width: 0; flex: 1; }
+.guide-steps strong { display: block; font-size: 15.5px; }
+.guide-steps p { margin: 3px 0 10px; font-size: 14px; color: var(--color-muted-foreground); }
+.guide-steps b { color: var(--color-foreground); font-weight: 600; }
+.guide-steps .btn .icon { width: 14px; height: 14px; }
+.guide-steps a.btn { text-decoration: none; }
+.guide-links { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.guide-site-row { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
+.guide-site {
+  flex: 1; min-width: 0; padding: 9px 12px; border-radius: 10px; background: var(--color-muted);
+  font-size: 13px; white-space: normal; word-break: break-all;
+}
+.guide-form { display: flex; gap: var(--space-2); }
+.guide-form input {
+  flex: 1; min-width: 0; min-height: 40px; padding: 0 12px; font: inherit; font-size: 16px;
+  color: var(--color-foreground); background: var(--color-card);
+  border: 1px solid var(--color-border-strong); border-radius: 12px;
+}
+.guide-result {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; margin-top: var(--space-3); padding: 12px;
+  border-radius: 12px; font-size: 14px; line-height: 1.5;
+  transition: opacity 200ms var(--ease), transform 200ms var(--ease);
+}
+@starting-style { .guide-result { opacity: 0; transform: translateY(4px); } }
+.guide-result > .icon { flex: none; margin-top: 2px; }
+.guide-result > div { flex: 1; min-width: 0; }
+.guide-result .btn { margin-left: 26px; }
+.guide-result.is-good { background: var(--color-success-soft); color: var(--c-success-text); }
+.guide-result.is-bad { background: var(--color-primary-soft); color: var(--c-danger-strong); }

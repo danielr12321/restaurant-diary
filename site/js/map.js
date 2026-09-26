@@ -190,14 +190,14 @@ export function createMapView({ canvas, message, popupHtml }) {
         map: view.gmap, position: { lat, lng }, title: entry.item.name, content: googlePin(entry.item),
       });
       marker.addListener("click", () => {
-        view.info.setContent(popupHtml(entry.item, entry.branch));
+        view.info.setContent(popupHtml(entry.item));
         view.info.open({ anchor: marker, map: view.gmap });
       });
       entry.marker = marker;
     } else {
       entry.marker = window.L.marker([lat, lng], { icon: leafletIcon(entry.item), title: entry.item.name })
         .addTo(view.leaflet)
-        .bindPopup(() => popupHtml(entry.item, entry.branch));
+        .bindPopup(() => popupHtml(entry.item));
     }
   }
 
@@ -210,63 +210,27 @@ export function createMapView({ canvas, message, popupHtml }) {
     }
   }
 
-  function kmApart(from, lat, lng) {
-    const dLat = (lat - from.lat) * 110.574;
-    const dLon = (lng - from.lon) * 111.32 * Math.cos(from.lat * Math.PI / 180);
-    return Math.sqrt(dLat * dLat + dLon * dLon);
-  }
-
-  // A chain is one entry with many addresses: each branch gets its own pin. With
-  // a distance chosen, only the branches within it are pinned - the point of
-  // "within 2 km" is not to see the other end of the country.
-  function pinsOf(item, ctx) {
-    const branches = item.chain && Array.isArray(item.branches)
-      ? item.branches.filter((branch) => branch && branch.lat) : [];
-    if (!branches.length) {
-      return [{ key: item.id, lat: parseFloat(item.lat), lng: parseFloat(item.lon), item, branch: null }];
-    }
-    let shown = branches;
-    if (ctx.origin && ctx.radius > 0) {
-      const near = branches.filter((branch) =>
-        kmApart(ctx.origin, parseFloat(branch.lat), parseFloat(branch.lon)) <= ctx.radius);
-      if (near.length) shown = near;
-      else {
-        shown = [branches.reduce((best, branch) => {
-          const km = kmApart(ctx.origin, parseFloat(branch.lat), parseFloat(branch.lon));
-          return !best || km < best.km ? { branch, km } : best;
-        }, null).branch];
-      }
-    }
-    return shown.map((branch) => ({
-      key: item.id + "#" + branch.lat + "," + branch.lon,
-      lat: parseFloat(branch.lat),
-      lng: parseFloat(branch.lon),
-      item,
-      branch,
-    }));
-  }
-
-  function syncMarkers(items, ctx) {
+  function syncMarkers(items) {
     const seen = new Set();
     const points = [];
-    items.forEach((item) => pinsOf(item, ctx).forEach((pin) => {
-      const { key, lat, lng } = pin;
+    items.forEach((item) => {
+      const lat = parseFloat(item.lat);
+      const lng = parseFloat(item.lon);
       if (!isFinite(lat) || !isFinite(lng)) return;
-      seen.add(key);
+      seen.add(item.id);
       points.push({ lat, lng });
       const sig = signature(item, lat, lng);
-      const existing = view.markers.get(key);
+      const existing = view.markers.get(item.id);
       if (existing) {
         existing.item = item; // popups always show the latest notes
-        existing.branch = pin.branch;
         if (existing.sig === sig) return;
         removeOverlay(existing.marker);
       }
-      const entry = existing || { item, branch: pin.branch, sig, marker: null };
+      const entry = existing || { item, sig, marker: null };
       entry.sig = sig;
       addMarker(entry, lat, lng);
-      view.markers.set(key, entry);
-    }));
+      view.markers.set(item.id, entry);
+    });
     view.markers.forEach((entry, id) => {
       if (!seen.has(id)) {
         removeOverlay(entry.marker);

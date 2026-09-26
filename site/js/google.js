@@ -73,6 +73,19 @@ export async function saveGoogleKey(key) {
   else writeSetting("google-key", clean || null);
 }
 
+/**
+ * Tries a key before it's kept: one search suggestion (the cheapest request,
+ * counted like any other). Throws Google's own reason, in plain words.
+ */
+export async function testGoogleKey(key) {
+  const clean = (key || "").trim();
+  if (!clean || clean.length > 200 || !/^[A-Za-z0-9_-]+$/.test(clean)) {
+    throw new GoogleError("That doesn't look like a Google API key — it starts with AIza.", false);
+  }
+  await billedCall("autocomplete", "POST", "/places:autocomplete", clean,
+    { body: { input: "pizza", languageCode: "en", regionCode: "il" } });
+}
+
 function mask(key) {
   return key.length > 10 ? key.slice(0, 4) + "…" + key.slice(-4) : key ? "set" : "";
 }
@@ -359,12 +372,6 @@ export async function autocomplete(query, session, country) {
   return places.filter((place) => place.is_food);
 }
 
-// Finding a chain's branches needs only where they are: Pro-tier fields.
-const BRANCH_FIELDS = [
-  "places.id", "places.displayName", "places.formattedAddress", "places.shortFormattedAddress",
-  "places.addressComponents", "places.location", "places.primaryType", "places.types",
-].join(",");
-
 // A recommendation is shown like any search result, so it asks for what Place
 // Details would: rating, price, hours, phone and website. That's the Enterprise
 // tier (1,000 free a month rather than 5,000), but one search brings twenty
@@ -416,25 +423,6 @@ function kmBetween(from, to) {
   const dLon = (parseFloat(to.lon) - Number(from.lon)) * rad;
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
   return 12742 * Math.asin(Math.sqrt(h));
-}
-
-/**
- * The branches of a chain, for countries the built-in Israeli list doesn't
- * cover. Same search and same monthly allowance as a recommendation.
- */
-export async function findBranchesOnline(name, country, where) {
-  const key = googleKey();
-  if (!key) throw new GoogleError("No Google API key is set.", false);
-  const body = {
-    textQuery: name + (where ? " " + where : ""),
-    languageCode: "en",
-    regionCode: country || "il",
-    includedType: "restaurant",
-    pageSize: 20,
-  };
-  const raw = await billedCall("suggest", "POST", "/places:searchText", key,
-    { body, fieldMask: BRANCH_FIELDS });
-  return (raw.places || []).map(normalizeDetails).filter((place) => place.is_food);
 }
 
 export async function placeDetails(placeId, session, country) {
