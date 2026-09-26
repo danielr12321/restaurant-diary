@@ -59,6 +59,7 @@
   <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></symbol>
   <symbol id="i-cloud-off" viewBox="0 0 24 24"><path d="m2 2 20 20M5.78 5.78A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.31-.2M21.5 15.2A4.5 4.5 0 0 0 17.5 10h-1.79A7 7 0 0 0 10.2 5.1"/></symbol>
   <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z"/></symbol>
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></symbol>
   <symbol id="i-smartphone" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></symbol>
@@ -77,8 +78,8 @@
     <div class="header-actions">
       <button type="button" class="share-btn" id="share-open" aria-haspopup="dialog">
         <svg class="icon" aria-hidden="true"><use href="#i-users"/></svg>
-        <span class="share-label" id="share-label">Share with a friend</span>
-        <span class="share-label-short" id="share-label-short" aria-hidden="true">Share</span>
+        <span class="share-label" id="share-label">Invite a friend</span>
+        <span class="share-label-short" id="share-label-short" aria-hidden="true">Invite</span>
         <span class="sync-dot" id="sync-dot" hidden></span>
       </button>
       <button type="button" class="btn-icon" id="settings-open" title="Settings" aria-label="Settings"
@@ -94,7 +95,6 @@
 </header>
 
 <main class="wrap" id="main">
-  <section class="stats" id="stats" aria-label="Summary"></section>
   <section class="usage usage-page" id="google-usage" aria-label="Google Maps usage this month" hidden></section>
 
   <div class="toolbar">
@@ -143,6 +143,32 @@
     </div>
 
     <div class="filter-row">
+      <button type="button" class="chip" id="open-now" aria-pressed="false"
+              title="Only show places that are open at this moment">
+        <svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>
+        Open now
+      </button>
+
+      <div class="chip-pair">
+        <button type="button" class="chip" id="near-me" aria-pressed="false">
+          <svg class="icon" aria-hidden="true"><use href="#i-crosshair"/></svg>
+          Near me
+        </button>
+        <label class="chip chip-select" id="radius-wrap" hidden>
+          <span class="sr-only">Distance from you</span>
+          <span class="chip-value" data-for="radius" aria-hidden="true"></span>
+          <select id="radius">
+            <option value="1">1 km</option>
+            <option value="2">2 km</option>
+            <option value="5" selected>5 km</option>
+            <option value="10">10 km</option>
+            <option value="25">25 km</option>
+            <option value="0">Any distance</option>
+          </select>
+          <svg class="icon chip-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+        </label>
+      </div>
+
       <button type="button" class="chip filters-toggle" id="filters-toggle"
               aria-expanded="false" aria-controls="filter-panel">
         <svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg>
@@ -150,32 +176,6 @@
       </button>
 
       <div class="filter-panel" id="filter-panel" role="group" aria-label="Filters">
-        <button type="button" class="chip" id="open-now" aria-pressed="false"
-                title="Only show places that are open at this moment">
-          <svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>
-          Open now
-        </button>
-
-        <div class="chip-pair">
-          <button type="button" class="chip" id="near-me" aria-pressed="false">
-            <svg class="icon" aria-hidden="true"><use href="#i-crosshair"/></svg>
-            Near me
-          </button>
-          <label class="chip chip-select" id="radius-wrap" hidden>
-            <span class="sr-only">Distance from you</span>
-            <span class="chip-value" data-for="radius" aria-hidden="true"></span>
-            <select id="radius">
-              <option value="1">1 km</option>
-              <option value="2">2 km</option>
-              <option value="5" selected>5 km</option>
-              <option value="10">10 km</option>
-              <option value="25">25 km</option>
-              <option value="0">Any distance</option>
-            </select>
-            <svg class="icon chip-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
-          </label>
-        </div>
-
         <label class="chip chip-select" id="cuisine-wrap">
           <svg class="icon" aria-hidden="true"><use href="#i-utensils"/></svg>
           <span class="sr-only">Type of place</span>
@@ -196,23 +196,23 @@
           <svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>
           Clear
         </button>
-      </div>
 
-      <label class="chip chip-select sort-chip">
-        <svg class="icon" aria-hidden="true"><use href="#i-sort"/></svg>
-        <span class="sr-only">Sort by</span>
-        <span class="chip-value" data-for="sort" aria-hidden="true"></span>
-        <select id="sort">
-          <option value="added">Recently added</option>
-          <option value="favorite">Favorites first</option>
-          <option value="name">Name A–Z</option>
-          <option value="city">City</option>
-          <option value="rating">Top rated</option>
-          <option value="price">Cheapest first</option>
-          <option value="distance" disabled>Closest (use Near me)</option>
-        </select>
-        <svg class="icon chip-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
-      </label>
+        <label class="chip chip-select sort-chip">
+          <svg class="icon" aria-hidden="true"><use href="#i-sort"/></svg>
+          <span class="sr-only">Sort by</span>
+          <span class="chip-value" data-for="sort" aria-hidden="true"></span>
+          <select id="sort">
+            <option value="added">Recently added</option>
+            <option value="favorite">Favorites first</option>
+            <option value="name">Name A–Z</option>
+            <option value="city">City</option>
+            <option value="rating">Top rated</option>
+            <option value="price">Cheapest first</option>
+            <option value="distance" disabled>Closest (use Near me)</option>
+          </select>
+          <svg class="icon chip-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+        </label>
+      </div>
     </div>
   </div>
 
@@ -626,11 +626,11 @@
   </div>
 </div>
 
-<!-- Share with a friend -->
+<!-- Invite a friend: one diary, used together -->
 <div class="modal-backdrop" id="share-modal" hidden>
   <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="share-title">
     <div class="modal-head">
-      <h2 id="share-title">Share with a friend</h2>
+      <h2 id="share-title">Invite a friend</h2>
       <button type="button" class="btn-icon" id="close-share" aria-label="Close">
         <svg class="icon"><use href="#i-x"/></svg>
       </button>
@@ -743,6 +743,9 @@
     <svg class="icon"><use href="#i-chevron-right"/></svg>
   </button>
 </div>
+
+<!-- A card's "more" menu: one element, placed beside whichever card opened it -->
+<div class="pop-menu" id="card-menu" role="menu" hidden></div>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 

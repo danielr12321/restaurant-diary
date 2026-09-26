@@ -239,9 +239,10 @@ function todayHours(parsed, now) {
   return spans.map((s) => minutesToLabel(s.start) + "–" + minutesToLabel(s.end)).join(", ");
 }
 
-function hoursMarkup(rawHours) {
+// `brief`: just today's hours, where "open now" is already said above them.
+function hoursMarkup(rawHours, quiet, brief) {
   if (!rawHours) {
-    return '<div class="meta-row">' + icon("clock") +
+    return quiet ? "" : '<div class="meta-row">' + icon("clock") +
       "<span>No opening hours listed</span></div>";
   }
   const now = new Date();
@@ -251,6 +252,10 @@ function hoursMarkup(rawHours) {
 
   if (open === null || today === null) {
     return '<div class="meta-row">' + icon("clock") + "<span>" + esc(rawHours) + "</span></div>";
+  }
+  if (brief) {
+    return '<div class="meta-row">' + icon("clock") + "<span>" +
+      (today === "Closed today" ? "Closed today" : "Today " + esc(today)) + "</span></div>";
   }
   const badge = open
     ? '<span class="badge badge-open"><span class="badge-dot"></span>Open now</span>'
@@ -273,7 +278,7 @@ function hasReadableHours(item) {
 
 /* ---------- metadata rows shared by cards and the preview ---------- */
 
-function metaMarkup(item, withContact) {
+function metaMarkup(item, withContact, quiet, brief) {
   let html = "";
   const address = item.address || "";
   const city = item.city || "";
@@ -281,7 +286,7 @@ function metaMarkup(item, withContact) {
   const includesCity = city && address.toLowerCase().includes(city.toLowerCase());
   const place = [address, includesCity ? "" : city].filter(Boolean).join(", ");
   if (place) html += '<div class="meta-row">' + icon("pin") + "<span>" + esc(place) + "</span></div>";
-  html += hoursMarkup(item.opening_hours);
+  html += hoursMarkup(item.opening_hours, quiet, brief);
 
   if (item.google_rating) {
     const count = item.google_rating_count
@@ -467,7 +472,7 @@ function menuRowMarkup(item) {
   } else if (item.website) {
     label = "Find the menu";
   } else {
-    label = "Add a menu link";
+    return ""; // adding one by hand is in the card's "more" menu
   }
   return '<div class="meta-row">' + icon("book") +
     '<span><button type="button" class="link-btn" data-act="menu" data-id="' + esc(item.id) + '">' +
@@ -522,12 +527,15 @@ function branchesMarkup(item) {
     '">see them all</button></span></div>';
 }
 
-// The address, hours, menu and distance, shared by both layouts.
-function detailsMarkup(item) {
-  const km = distanceKm(item);
+// The address, hours, menu and distance, shared by both layouts. A card's
+// status line already says how far and whether it's open, and its chain hint
+// sits above, so there they're left out.
+function detailsMarkup(item, inCard) {
+  const km = inCard ? null : distanceKm(item);
   const branches = branchesOf(item);
   let html = '<div class="card-meta">';
-  html += branches.length ? branchesMarkup(item) + hoursMarkup(hoursOf(item)) : metaMarkup(item, true);
+  html += branches.length ? branchesMarkup(item) + hoursMarkup(hoursOf(item), true, inCard)
+    : metaMarkup(item, true, true, inCard);
   if (branches.length) {
     // A chain's phone and website belong to the chain, not to one branch.
     const shown = asShown(item);
@@ -543,7 +551,7 @@ function detailsMarkup(item) {
     html += '<div class="meta-row">' + icon("crosshair") +
       "<span>" + esc(formatDistance(km)) + "</span></div>";
   }
-  html += chainHintMarkup(item);
+  if (!inCard) html += chainHintMarkup(item);
   html += menuRowMarkup(item);
   const source = safeUrl(item.source_url);
   if (source) {
@@ -581,6 +589,28 @@ function notesMarkup(item) {
   return html + "</div>";
 }
 
+function mapsLink(item) {
+  if (item.google_place_id) {
+    return {
+      where: "Google Maps",
+      url: safeUrl(item.google_maps_uri) ||
+        "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(item.name) +
+        "&query_place_id=" + encodeURIComponent(item.google_place_id),
+    };
+  }
+  if (item.lat && item.lon) {
+    return {
+      where: "the map",
+      url: "https://www.openstreetmap.org/?mlat=" + encodeURIComponent(item.lat) +
+        "&mlon=" + encodeURIComponent(item.lon) + "#map=18/" + encodeURIComponent(item.lat) +
+        "/" + encodeURIComponent(item.lon),
+    };
+  }
+  return null;
+}
+
+// The one thing a card is for, and a "more" menu for everything else: a row of
+// bare icons left people guessing which was which.
 function actionsMarkup(item) {
   const visited = item.status === "visited";
   let html = '<div class="card-actions">';
@@ -592,28 +622,9 @@ function actionsMarkup(item) {
       icon("check") + "I've been here</button>";
   }
   html += '<span class="spacer"></span>';
-  html += '<button type="button" class="btn-icon" data-act="send" data-id="' + esc(item.id) +
-    '" title="Send to a friend" aria-label="Send ' + esc(item.name) + ' to a friend">' + icon("send") + "</button>";
-  html += '<button type="button" class="btn-icon" data-act="details" data-id="' + esc(item.id) +
-    '" title="Edit details" aria-label="Edit the details of ' + esc(item.name) + '">' + icon("edit") + "</button>";
-
-  let maps = null;
-  if (item.google_place_id) {
-    maps = safeUrl(item.google_maps_uri) ||
-      "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(item.name) +
-      "&query_place_id=" + encodeURIComponent(item.google_place_id);
-  } else if (item.lat && item.lon) {
-    maps = "https://www.openstreetmap.org/?mlat=" + encodeURIComponent(item.lat) +
-      "&mlon=" + encodeURIComponent(item.lon) + "#map=18/" + encodeURIComponent(item.lat) +
-      "/" + encodeURIComponent(item.lon);
-  }
-  if (maps) {
-    const where = item.google_place_id ? "Google Maps" : "the map";
-    html += '<a class="btn-icon" href="' + esc(maps) + '" target="_blank" rel="noopener noreferrer" ' +
-      'title="Show on ' + where + '" aria-label="Show ' + esc(item.name) + " on " + where + '">' +
-      icon("external") + "</a>";
-  }
-  // Removing lives in Edit details: rarely wanted, and too easy to hit on a phone.
+  html += '<button type="button" class="btn-icon more-btn" data-act="actions" data-id="' + esc(item.id) +
+    '" aria-haspopup="menu" aria-expanded="false" title="More" aria-label="More for ' + esc(item.name) + '">' +
+    icon("more") + "</button>";
   return html + "</div>";
 }
 
@@ -633,11 +644,73 @@ function cardMarkup(item) {
   if (tagline.length) html += '<div class="card-tagline">' + tagline.join("") + "</div>";
   html += "</div>" + favoriteButtonMarkup(item) + "</div>";
 
-  html += detailsMarkup(item);
+  html += statusMarkup(item);
+  const hint = chainHintMarkup(item);
+  if (hint) html += '<div class="card-meta card-hint">' + hint + "</div>";
+  if (openCards.has(item.id)) html += moreMarkup(item);
   html += cardPhotosMarkup(item);
   html += notesMarkup(item);
   html += actionsMarkup(item);
   return html + "</article>";
+}
+
+/* A card says the few things that decide an evening — open or not, how far,
+   where — on one line. The address, hours, phone and website wait behind it,
+   one tap away, so a phone screen shows several places instead of one. */
+
+const openCards = new Set();
+
+function statusMarkup(item) {
+  const bits = [];
+  const now = new Date();
+  const parsed = parseOpeningHours(hoursOf(item));
+  const open = openNow(parsed, now);
+  if (open !== null) {
+    bits.push('<span class="status-' + (open ? "open" : "shut") + '"><span class="badge-dot"></span>' +
+      (open ? "Open" : "Closed") + "</span>");
+    const change = nextChange(parsed, now);
+    if (change) bits.push(esc(change.charAt(0).toLowerCase() + change.slice(1)));
+  }
+  const km = distanceKm(item);
+  if (km !== null) bits.push(esc(formatDistance(km).replace(/ away$/, "")));
+  const branches = branchesOf(item);
+  if (branches.length) bits.push(branches.length + " branches");
+  else if (item.city) bits.push(esc(item.city));
+  else if (item.address) bits.push(esc(item.address));
+  const expanded = openCards.has(item.id);
+  return '<button type="button" class="card-status" data-act="more" data-id="' + esc(item.id) +
+    '" aria-expanded="' + (expanded ? "true" : "false") + '">' +
+    '<span class="card-status-text">' +
+    (bits.length ? bits.join('<span class="status-sep" aria-hidden="true"></span>') : "Address, hours and contact") +
+    "</span>" + '<span class="card-status-more">' + (expanded ? "Less" : "More") + icon("chevron-down") +
+    "</span></button>";
+}
+
+function moreMarkup(item) {
+  const details = detailsMarkup(item, true);
+  const empty = details === '<div class="card-meta"></div>';
+  return '<div class="card-more">' + (empty
+    ? '<div class="card-meta"><p class="card-more-empty">No address, hours or contact yet. ' +
+      '<button type="button" class="link-btn" data-act="details" data-id="' + esc(item.id) +
+      '">Add them</button></p></div>'
+    : details) + "</div>";
+}
+
+function toggleCard(id) {
+  if (openCards.has(id)) openCards.delete(id);
+  else openCards.add(id);
+  const item = store.get(id);
+  const card = $("list").querySelector('.card[data-card-id="' + CSS.escape(id) + '"]');
+  if (!item || !card) {
+    render();
+    return;
+  }
+  card.insertAdjacentHTML("afterend", cardMarkup(item));
+  const next = card.nextElementSibling;
+  next.classList.add("no-enter");
+  card.remove();
+  hydratePhotos(next);
+  next.querySelector(".card-status").focus({ preventScroll: true });
 }
 
 /* ---------- the simple list ----------
@@ -707,7 +780,7 @@ function welcomeMarkup() {
     '<div class="empty-mark">' + icon("users") + "</div>" +
     "<h3>Is your diary on another device?</h3>" +
     "<p>Type its code to bring it here. Your restaurants, notes and photos then stay in step on every " +
-    "device. You'll find the code under Share on a device that already has the diary.</p>" +
+    "device. You'll find the code under Invite on a device that already has the diary.</p>" +
     '<form class="share-join welcome-join" id="welcome-join">' +
     '<label class="sr-only" for="welcome-code">Diary code</label>' +
     '<input id="welcome-code" class="code-input" autocomplete="off" autocapitalize="characters" ' +
@@ -1078,13 +1151,13 @@ let leaveArmed = false;
 
 function renderShareButton() {
   const sharing = !!cloud.diary;
-  $("share-label").textContent = sharing ? "Shared diary" : "Share with a friend";
-  $("share-label-short").textContent = sharing ? "Shared" : "Share";
+  $("share-label").textContent = sharing ? "Shared diary" : "Invite a friend";
+  $("share-label-short").textContent = sharing ? "Shared" : "Invite";
   $("share-open").classList.toggle("is-sharing", sharing);
   $("sync-dot").hidden = !sharing;
   $("sync-dot").dataset.status = cloud.status;
   $("share-open").setAttribute("aria-label", sharing
-    ? "Shared diary: " + (SYNC_LABELS[cloud.status] || "") : "Share with a friend");
+    ? "Shared diary: " + (SYNC_LABELS[cloud.status] || "") : "Invite a friend");
 }
 
 function spinnerMarkup() {
@@ -1137,7 +1210,7 @@ function renderShare() {
     '<div class="code-row"><code class="code-box">' + esc(code) + "</code>" +
     '<button type="button" class="btn btn-ghost btn-sm" id="copy-code">' + icon("copy") + "Copy</button></div>" +
     '<p class="hint">Every device joins once with this code — your friend’s, and your own phone or computer ' +
-    "too. On that device, open the diary, tap <strong>Share</strong>, choose <strong>Join with a code</strong> " +
+    "too. On that device, open the diary, tap <strong>Invite</strong>, choose <strong>Join with a code</strong> " +
     "and type it.</p>" +
     '<button type="button" class="btn btn-primary share-invite" id="send-invite">' + icon("share") +
     (touch ? "Send an invite" : "Copy an invite message") + "</button>" +
@@ -1196,7 +1269,7 @@ async function copyText(text) {
 
 async function sendInvite() {
   const code = cloud.diary.invite_code;
-  const text = "Join my restaurant diary!\n1. Open " + SITE_URL + "\n2. Tap “Share” → “Join with a code”\n" +
+  const text = "Join my restaurant diary!\n1. Open " + SITE_URL + "\n2. Tap “Invite” → “Join with a code”\n" +
     "3. Type the code " + code;
   if (navigator.share && window.matchMedia("(pointer: coarse)").matches) {
     try {
@@ -1624,7 +1697,12 @@ const layers = [];
 let ignorePops = 0;
 let closingFromBack = false;
 
+const closingLayers = new Map();
+
 function openLayer(id, close, guard) {
+  clearTimeout(closingLayers.get(id));
+  closingLayers.delete(id);
+  $(id).classList.remove("is-closing");
   $(id).hidden = false;
   document.body.classList.add("has-sheet");
   layers.push({ id, close, guard });
@@ -1635,8 +1713,34 @@ function openLayer(id, close, guard) {
   }
 }
 
+// A dialog leaves the way it came, a little quicker than it arrived. One that
+// was pulled down by hand is already off screen and just goes.
+function hideLayer(id) {
+  const el = $(id);
+  const animate = el.classList.contains("modal-backdrop") && !el.dataset.dismissed && !el.hidden &&
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const finish = () => {
+    closingLayers.delete(id);
+    el.classList.remove("is-closing");
+    el.hidden = true;
+    delete el.dataset.dismissed;
+    const modal = el.querySelector(".modal");
+    if (modal) {
+      modal.style.transform = "";
+      modal.style.transition = "";
+    }
+  };
+  if (!animate) {
+    finish();
+    return;
+  }
+  el.classList.add("is-closing");
+  clearTimeout(closingLayers.get(id));
+  closingLayers.set(id, setTimeout(finish, 190));
+}
+
 function closeLayer(id) {
-  $(id).hidden = true;
+  hideLayer(id);
   const index = layers.findIndex((layer) => layer.id === id);
   if (index < 0) return;
   layers.splice(index, 1);
@@ -1678,29 +1782,70 @@ function anyModalOpen() {
   return layers.length > 0;
 }
 
+/* On a phone a dialog is a sheet from the bottom, and like any sheet it can be
+   pulled down by its top to close: far enough, or with a quick flick. Pulled
+   up, it gives a little and springs back. */
+let sheetDrag = null;
+
+document.addEventListener("pointerdown", (event) => {
+  if (sheetDrag || window.innerWidth > 720 || event.button > 0) return;
+  const head = event.target.closest(".modal-head");
+  if (!head || event.target.closest("button, a, input, select, textarea, label")) return;
+  const backdrop = head.closest(".modal-backdrop");
+  const top = layers[layers.length - 1];
+  if (!backdrop || !top || top.id !== backdrop.id) return;
+  const modal = head.closest(".modal");
+  sheetDrag = { head, modal, backdrop, layer: top, pointer: event.pointerId,
+    startY: event.clientY, startedAt: performance.now(), dy: 0 };
+  try {
+    head.setPointerCapture(event.pointerId);
+  } catch (err) {
+    /* the drag still follows the pointer while it stays over the page */
+  }
+  modal.style.transition = "none";
+});
+
+document.addEventListener("pointermove", (event) => {
+  if (!sheetDrag || event.pointerId !== sheetDrag.pointer) return;
+  const raw = event.clientY - sheetDrag.startY;
+  sheetDrag.dy = raw >= 0 ? raw : -Math.sqrt(-raw) * 2;
+  sheetDrag.modal.style.transform = "translateY(" + sheetDrag.dy + "px)";
+});
+
+function endSheetDrag(event) {
+  if (!sheetDrag || event.pointerId !== sheetDrag.pointer) return;
+  const { modal, backdrop, layer, dy, startedAt } = sheetDrag;
+  sheetDrag = null;
+  const speed = Math.abs(dy) / Math.max(1, performance.now() - startedAt);
+  const away = dy > 0 && (dy > modal.offsetHeight * 0.3 || (dy > 24 && speed > 0.11));
+  if (away && (!layer.guard || layer.guard())) {
+    modal.style.transition = "transform 200ms cubic-bezier(0.23, 1, 0.32, 1)";
+    modal.style.transform = "translateY(100%)";
+    backdrop.classList.add("is-closing");
+    backdrop.dataset.dismissed = "1";
+    setTimeout(() => {
+      if (layers.includes(layer)) layer.close();
+      else hideLayer(backdrop.id);
+    }, 200);
+    return;
+  }
+  modal.style.transition = "transform 280ms cubic-bezier(0.32, 0.72, 0, 1)";
+  modal.style.transform = "";
+}
+document.addEventListener("pointerup", endSheetDrag);
+document.addEventListener("pointercancel", endSheetDrag);
+
 // Cards animate in when the list is loaded or the tab changes, not on every
 // filter keystroke, where replaying the entrance just makes the page flicker.
 function render(animate) {
   const rows = state.view === "rows";
-  $("list").className = (rows ? "rows" : "grid") + (animate ? "" : " calm");
+  // Cards arrive with a short cascade the first time the diary shows, and never
+  // again: tabs are switched far too often for an entrance each time.
+  const entrance = animate && !state.entered;
+  $("list").className = (rows ? "rows" : "grid") + (entrance ? "" : " calm");
   const wishlist = state.items.filter((i) => i.status === "wishlist");
   const visited = state.items.filter((i) => i.status === "visited");
-  const rated = visited.filter((i) => i.rating > 0);
-  const average = rated.length
-    ? (rated.reduce((sum, i) => sum + i.rating, 0) / rated.length).toFixed(1)
-    : "–";
 
-  $("stats").innerHTML =
-    '<div class="stat"><div class="stat-value">' + wishlist.length + '</div>' +
-    '<div class="stat-label">To try</div></div>' +
-    '<div class="stat"><div class="stat-value">' + visited.length + '</div>' +
-    '<div class="stat-label">Visited</div></div>' +
-    '<div class="stat"><div class="stat-value">' + average + '</div>' +
-    '<div class="stat-label"><span class="stat-long">Average rating</span>' +
-    '<span class="stat-short">Avg rating</span></div></div>';
-
-  // Three zeros say nothing on a first visit, and push the "join with a code" card down.
-  $("stats").hidden = !state.items.length && !cloud.diary;
   document.querySelectorAll('[data-count="wishlist"]').forEach((el) => { el.textContent = wishlist.length; });
   document.querySelectorAll('[data-count="visited"]').forEach((el) => { el.textContent = visited.length; });
 
@@ -1755,6 +1900,10 @@ function render(animate) {
     $("list").innerHTML = rows
       ? '<ul class="rows-list">' + items.map(rowMarkup).join("") + "</ul>"
       : items.map(cardMarkup).join("");
+    if (entrance && !rows) {
+      $("list").querySelectorAll(".card").forEach((card, i) => card.style.setProperty("--i", Math.min(i, 8)));
+    }
+    state.entered = true;
     hydratePhotos($("list"));
   }
 }
@@ -2111,9 +2260,11 @@ function updateFilterBar() {
   $("cuisine-wrap").classList.toggle("is-on", !!state.cuisine);
   $("city-wrap").classList.toggle("is-on", !!state.city);
 
-  const active = [state.openNow, !!state.origin, !!state.cuisine, !!state.city].filter(Boolean).length;
-  $("filters-count").textContent = active;
-  $("filters-count").hidden = !active;
+  // "Open now" and "Near me" are always in view; the chip counts what's folded behind it.
+  const folded = [!!state.cuisine, !!state.city].filter(Boolean).length;
+  $("filters-count").textContent = folded;
+  $("filters-count").hidden = !folded;
+  const active = folded + [state.openNow, !!state.origin].filter(Boolean).length;
   $("clear-filters").hidden = !(active || state.filter.trim());
 }
 
@@ -3989,23 +4140,139 @@ document.querySelectorAll('input[name="d-status"]').forEach((radio) => {
   radio.addEventListener("change", () => { $("d-note-field").hidden = detailsStatus() === "visited"; });
 });
 
+function cardAction(action, id, trigger) {
+  if (action === "add") openAdd();
+  else if (action === "visit" || action === "edit") openReview(id);
+  else if (action === "delete") removeItem(id);
+  else if (action === "menu") openMenu(id);
+  else if (action === "details") openDetails(id);
+  else if (action === "send") openSend([id]);
+  else if (action === "more") toggleCard(id);
+  else if (action === "actions") toggleCardMenu(id, trigger);
+}
+
 $("list").addEventListener("click", (event) => {
   const trigger = event.target.closest("[data-act]");
   if (!trigger) return;
   const action = trigger.dataset.act;
-  if (action === "add") openAdd();
-  else if (action === "visit" || action === "edit") openReview(trigger.dataset.id);
-  else if (action === "delete") removeItem(trigger.dataset.id);
-  else if (action === "favorite") toggleFavorite(trigger.dataset.id);
+  if (["add", "visit", "edit", "delete", "menu", "details", "send", "more", "actions"].includes(action)) {
+    cardAction(action, trigger.dataset.id, trigger);
+  } else if (action === "favorite") toggleFavorite(trigger.dataset.id);
   else if (action === "photo") openLightbox(trigger.dataset.id, Number(trigger.dataset.index));
-  else if (action === "menu") openMenu(trigger.dataset.id);
-  else if (action === "details") openDetails(trigger.dataset.id);
   else if (action === "branches") openBranches(trigger.dataset.id);
   else if (action === "merge") mergeChain(trigger.dataset.id);
-  else if (action === "send") openSend([trigger.dataset.id]);
   else if (action === "apart") keepApart(trigger.dataset.id);
   else if (action === "expand") toggleRow(trigger.dataset.id);
 });
+
+/* ---------- a card's "more" menu ----------
+   One menu element, placed beside the button that opened it and growing out
+   of that corner. Arrow keys move through it; Escape, a tap elsewhere or a
+   scroll put it away. */
+
+let cardMenu = null; // { id, trigger }
+
+function menuItem(action, id, iconName, label, extra) {
+  return '<button type="button" role="menuitem" class="pop-item' + (extra ? " " + extra : "") +
+    '" data-act="' + action + '" data-id="' + esc(id) + '" tabindex="-1">' + icon(iconName) +
+    "<span>" + esc(label) + "</span></button>";
+}
+
+function toggleCardMenu(id, trigger) {
+  if (cardMenu && cardMenu.id === id) {
+    closeCardMenu(true);
+    return;
+  }
+  openCardMenu(id, trigger);
+}
+
+function openCardMenu(id, trigger) {
+  const item = store.get(id);
+  if (!item) return;
+  closeCardMenu(false, true);
+  const menu = $("card-menu");
+  const maps = mapsLink(item);
+  const menuLabel = item.menu && item.menu.url ? "See the menu" : item.website ? "Find the menu" : "Add a menu link";
+  menu.innerHTML =
+    menuItem("send", id, "send", "Send to a friend") +
+    menuItem("details", id, "edit", "Edit details") +
+    menuItem("menu", id, "book", menuLabel) +
+    (maps ? '<a role="menuitem" class="pop-item" tabindex="-1" href="' + esc(maps.url) +
+      '" target="_blank" rel="noopener noreferrer">' + icon("external") + "<span>Open in " +
+      esc(maps.where) + "</span></a>" : "") +
+    '<div class="pop-sep" role="separator"></div>' +
+    menuItem("delete", id, "trash", "Remove…", "is-danger");
+  menu.setAttribute("aria-label", "More for " + item.name);
+  menu.classList.remove("is-closing");
+  menu.hidden = false;
+
+  const box = trigger.getBoundingClientRect();
+  const width = menu.offsetWidth;
+  const height = menu.offsetHeight;
+  const below = box.bottom + 6 + height <= window.innerHeight - 8;
+  menu.style.top = (below ? box.bottom + 6 : Math.max(8, box.top - 6 - height)) + "px";
+  menu.style.left = Math.min(Math.max(8, box.right - width), window.innerWidth - width - 8) + "px";
+  menu.style.transformOrigin = (below ? "top" : "bottom") + " right";
+
+  trigger.setAttribute("aria-expanded", "true");
+  cardMenu = { id, trigger };
+  const first = menu.querySelector(".pop-item");
+  if (first) first.focus({ preventScroll: true });
+}
+
+function closeCardMenu(returnFocus, instantly) {
+  if (!cardMenu) return;
+  const { trigger } = cardMenu;
+  cardMenu = null;
+  if (trigger.isConnected) {
+    trigger.setAttribute("aria-expanded", "false");
+    if (returnFocus) trigger.focus({ preventScroll: true });
+  }
+  const menu = $("card-menu");
+  if (instantly || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    menu.hidden = true;
+    return;
+  }
+  menu.classList.add("is-closing");
+  setTimeout(() => {
+    if (!cardMenu) {
+      menu.hidden = true;
+      menu.classList.remove("is-closing");
+    }
+  }, 130);
+}
+
+$("card-menu").addEventListener("click", (event) => {
+  const link = event.target.closest("a.pop-item");
+  const trigger = event.target.closest("button[data-act]");
+  if (!link && !trigger) return;
+  closeCardMenu(false);
+  if (trigger) cardAction(trigger.dataset.act, trigger.dataset.id, trigger);
+});
+$("card-menu").addEventListener("keydown", (event) => {
+  const items = [...$("card-menu").querySelectorAll(".pop-item")];
+  const now = items.indexOf(document.activeElement);
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    const step = event.key === "ArrowDown" ? 1 : -1;
+    items[(now + step + items.length) % items.length].focus();
+  } else if (event.key === "Home" || event.key === "End") {
+    event.preventDefault();
+    items[event.key === "Home" ? 0 : items.length - 1].focus();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    closeCardMenu(true);
+  } else if (event.key === "Tab") {
+    closeCardMenu(false);
+  }
+});
+document.addEventListener("pointerdown", (event) => {
+  if (!cardMenu) return;
+  if (event.target.closest("#card-menu") || event.target.closest(".more-btn") === cardMenu.trigger) return;
+  closeCardMenu(false);
+}, true);
+window.addEventListener("scroll", () => closeCardMenu(false), { passive: true });
+window.addEventListener("resize", () => closeCardMenu(false));
 
 /* joining straight from the empty first screen */
 $("list").addEventListener("submit", async (event) => {

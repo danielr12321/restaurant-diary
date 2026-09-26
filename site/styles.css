@@ -40,10 +40,13 @@
   --font-display: "Playfair Display SC", Georgia, "Times New Roman", serif;
   --font-body: Karla, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-  --ease: cubic-bezier(.25, .46, .45, .94);
-  --t-fast: 150ms;
-  --t: 220ms;
-  --t-slow: 350ms;
+  /* One motion for the whole diary: a strong ease-out, quick. Sheets use the
+     iOS drawer curve. Nothing in the interface runs past 300ms. */
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --t-fast: 120ms;
+  --t: 180ms;
+  --t-slow: 240ms;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -123,7 +126,8 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; margin: 0; lett
   transition: background-color var(--t) var(--ease), color var(--t) var(--ease),
               border-color var(--t) var(--ease), transform var(--t-fast) var(--ease);
 }
-.btn:active { transform: translateY(1px); }
+.btn:active { transform: scale(0.97); }
+.btn:disabled:active { transform: none; }
 
 .btn-primary { background: var(--color-primary); color: var(--color-on-primary); }
 .btn-primary:hover { background: #B91C1C; }
@@ -155,29 +159,11 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; margin: 0; lett
   border-radius: var(--radius-sm);
 }
 
-/* ---------- Stats ---------- */
-
-.stats {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-3); margin: var(--space-5) 0 var(--space-4);
-}
-
-.stat {
-  background: var(--color-card); border: 1px solid var(--color-border);
-  border-radius: var(--radius); padding: var(--space-3) var(--space-4);
-  box-shadow: var(--shadow-sm);
-}
-.stat-value { font-family: var(--font-display); font-size: 28px; line-height: 1.1; }
-.stat-label {
-  font-size: 12px; text-transform: uppercase; letter-spacing: .09em;
-  color: var(--color-muted-foreground); margin-top: var(--space-1);
-}
-
 /* ---------- Toolbar & tabs ---------- */
 
 .toolbar {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
-  gap: var(--space-3); margin-bottom: var(--space-4);
+  gap: var(--space-3); margin: var(--space-4) 0;
 }
 
 .tabs {
@@ -258,7 +244,7 @@ select {
   margin-bottom: var(--space-4);
 }
 .filter-search { flex: 1 1 200px; min-width: 150px; max-width: 320px; }
-.filter-panel { display: flex; align-items: center; gap: var(--space-2); }
+.filter-panel { display: flex; align-items: center; gap: var(--space-2); flex: 1; }
 .sort-chip { margin-left: auto; }
 .chip.filters-toggle { display: none; }
 
@@ -771,6 +757,7 @@ select {
   transition: box-shadow var(--t-slow) var(--ease), transform var(--t-slow) var(--ease),
               border-color var(--t-slow) var(--ease);
   animation: rise var(--t-slow) var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
 }
 /* Lifts only under a mouse: on a touch screen a lift sticks after the tap. */
 @media (hover: hover) {
@@ -780,8 +767,8 @@ select {
   }
 }
 
-@keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-.grid.calm .card { animation: none; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.grid.calm .card, .card.no-enter { animation: none; }
 
 /* ---------- Favorites ----------
    A gradient can't be transitioned directly, so the warm tint lives on a
@@ -792,7 +779,7 @@ select {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(160deg, #FFF1CF 0%, #FFF8E8 42%, #FFFDF8 100%);
   opacity: 0;
-  transition: opacity 420ms var(--ease);
+  transition: opacity var(--t-slow) var(--ease);
 }
 .card > * { position: relative; }
 .card.is-favorite { border-color: #E8C678; box-shadow: 0 0 0 1px #F3DFAE, var(--shadow-sm); }
@@ -801,8 +788,8 @@ select {
 }
 .card.is-favorite::before { opacity: 1; }
 .card-mark, .card-actions, .card-review {
-  transition: background-color 420ms var(--ease), color 420ms var(--ease),
-              border-color 420ms var(--ease);
+  transition: background-color var(--t-slow) var(--ease), color var(--t-slow) var(--ease),
+              border-color var(--t-slow) var(--ease);
 }
 .card.is-favorite .card-mark { background: #F7DC9E; color: #7A4B00; }
 .card.is-favorite .card-review { background: rgba(255, 255, 255, .7); }
@@ -932,7 +919,7 @@ select {
 .row::before {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(160deg, #FFF1CF 0%, #FFF8E8 42%, #FFFDF8 100%);
-  opacity: 0; transition: opacity 420ms var(--ease);
+  opacity: 0; transition: opacity var(--t-slow) var(--ease);
 }
 .row.is-favorite::before { opacity: 1; }
 .row > * { position: relative; }
@@ -1032,7 +1019,12 @@ select {
   animation: pop var(--t-slow) var(--ease) both;
 }
 .modal-sm { max-width: 480px; }
-@keyframes pop { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes pop { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+/* Leaving is quicker than arriving. */
+.modal-backdrop.is-closing { animation: fade-out 180ms var(--ease) both; pointer-events: none; }
+.modal-backdrop.is-closing .modal { animation: pop-out 180ms var(--ease) both; }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes pop-out { to { opacity: 0; transform: translateY(6px) scale(.98); } }
 
 .modal-head {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
@@ -1176,7 +1168,9 @@ select {
   transition: color var(--t) var(--ease), transform var(--t-fast) var(--ease);
 }
 .star-btn .icon { width: 26px; height: 26px; }
-.star-btn:hover { transform: scale(1.08); }
+@media (hover: hover) and (pointer: fine) {
+  .star-btn:hover { transform: scale(1.08); }
+}
 .star-btn.on { color: var(--color-accent); }
 .star-btn.on .icon { fill: var(--color-accent); }
 
@@ -1206,7 +1200,7 @@ select {
 }
 .share-btn .icon { color: var(--color-accent); }
 .share-btn:hover { background: #F7E4BD; border-color: #DDB25A; }
-.share-btn:active { transform: translateY(1px); }
+.share-btn:active { transform: scale(0.97); }
 .share-label-short { display: none; }
 
 .sync-dot {
@@ -1336,10 +1330,6 @@ select {
   .share-btn.is-sharing { padding: 0 14px; }
   .share-btn.is-sharing .share-label-short { display: none; }
 
-  .stats { gap: var(--space-2); margin: var(--space-2) 0 var(--space-3); }
-  .stat { padding: 10px var(--space-2); text-align: center; }
-  .stat-value { font-size: 22px; }
-  .stat-label { font-size: 11px; letter-spacing: .06em; margin-top: 2px; }
   .usage-page { display: none; }
 
   .toolbar { display: none; }
@@ -1354,21 +1344,12 @@ select {
     margin-left: 0; padding-left: var(--space-3);
   }
   .row-details .card-meta { padding-right: var(--space-3); }
-  .filter-row {
-    display: flex; align-items: center; gap: var(--space-2); flex: 1 1 100%;
-    margin: 0 calc(var(--space-3) * -1); padding: 2px var(--space-3) 4px;
-    overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
-    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
-    mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
-  }
-  .filter-row::-webkit-scrollbar { display: none; }
-  .chip.filters-toggle { display: none; }
-  .filter-panel, .filter-bar.is-open .filter-panel {
-    display: flex; flex: none; flex-wrap: nowrap; order: 0; gap: var(--space-2);
-    padding: 0; border: 0; border-radius: 0; background: none;
-  }
+  /* "Open now", "Near me" and a Filters chip fit one line; nothing is cut off
+     at the edge. Type, city and sort open in a panel under them. */
+  .filter-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); flex: 1 1 100%; }
+  .filter-row > .chip, .chip-pair > .chip:not(.chip-select) { padding: 0 13px; }
+  .filter-panel { padding: var(--space-3) 12px; }
   .sort-chip { margin-left: 0; }
-  .filter-row > :last-child { margin-right: 24px; }
 
   .field-icon input, .field input[type="text"], .field textarea,
   .menu-paste-row input, .code-input { font-size: 16px; } /* smaller text makes iPhones zoom in */
@@ -1429,10 +1410,21 @@ select {
   .modal, .modal-sm {
     max-width: none; max-height: calc(100dvh - 16px - env(safe-area-inset-top));
     border-radius: 24px 24px 0 0;
-    animation: sheet-up 320ms cubic-bezier(.32, .72, 0, 1) both;
+    animation: sheet-up 300ms var(--ease-drawer) both;
   }
   .modal-tall { height: calc(100dvh - 16px - env(safe-area-inset-top)); }
-  .modal-head { padding: var(--space-3) var(--space-2) var(--space-3) var(--space-3); }
+  .modal-head {
+    padding: calc(var(--space-3) + 6px) var(--space-2) var(--space-3) var(--space-3);
+    touch-action: none; /* the top of a sheet is its handle */
+  }
+  /* the grab handle: says "this can be pulled down" */
+  .modal { position: relative; }
+  .modal::before {
+    content: ""; position: absolute; top: 7px; left: 50%; z-index: 1;
+    width: 36px; height: 5px; margin-left: -18px; border-radius: 3px;
+    background: var(--color-border-strong);
+  }
+  .modal-backdrop.is-closing .modal { animation: sheet-down 190ms var(--ease) both; }
   .modal-head h2 { font-size: 19px; }
   .modal-body, .modal-foot { padding-left: var(--space-3); padding-right: var(--space-3); }
   .modal-body { padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom)); }
@@ -1468,15 +1460,11 @@ select {
 }
 
 @keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes sheet-down { to { transform: translateY(100%); } }
 
 /* Very narrow phones: the brand gives way before the buttons do. */
 @media (max-width: 360px) {
   .site-header h1 { font-size: 15px; }
-}
-.stat-short { display: none; }
-@media (max-width: 720px) {
-  .stat-long { display: none; }
-  .stat-short { display: inline; }
 }
 
 /* Opened from the home screen: no browser bar, so the top needs the notch's room. */
@@ -1567,3 +1555,67 @@ select {
 @media (hover: hover) and (pointer: fine) {
   .send-option:hover, .import-row:not(.is-saved):hover { border-color: var(--color-accent); }
 }
+
+/* ---------- Press feedback ----------
+   Everything that can be pressed gives slightly under the finger, the same way. */
+
+.chip, .btn-icon, .view-btn, .tab, .bottom-tab, .shekel-btn, .star-btn {
+  transition: background-color var(--t) var(--ease), border-color var(--t) var(--ease),
+              color var(--t) var(--ease), transform var(--t-fast) var(--ease);
+}
+.chip:active, .btn-icon:active, .view-btn:active, .tab:active, .bottom-tab:active,
+.shekel-btn:active, .pop-item:active { transform: scale(0.97); }
+.star-btn:active { transform: scale(0.9); }
+
+/* ---------- The compact card ---------- */
+
+.card-status {
+  display: flex; align-items: center; gap: var(--space-2); width: 100%;
+  min-height: 40px; margin: -4px 0 var(--space-2); padding: 6px var(--space-4);
+  font: inherit; font-size: 14px; text-align: left; color: var(--color-muted-foreground);
+  background: none; border: 0; cursor: pointer;
+}
+.card-status-text {
+  flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px;
+}
+.status-open, .status-shut { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
+.status-open { color: var(--color-success); }
+.status-shut { color: var(--color-muted-foreground); }
+.status-sep { width: 3px; height: 3px; border-radius: 50%; background: var(--color-border-strong); }
+.card-status-more {
+  flex: none; display: inline-flex; align-items: center; gap: 2px;
+  font-size: 13px; font-weight: 600; color: var(--color-accent);
+}
+.card-status-more .icon { width: 16px; height: 16px; transition: transform var(--t) var(--ease); }
+.card-status[aria-expanded="true"] .card-status-more .icon { transform: rotate(180deg); }
+@media (hover: hover) and (pointer: fine) {
+  .card-status:hover .card-status-more { color: var(--color-primary); }
+}
+.card-status:focus-visible { outline: 2px solid var(--color-ring); outline-offset: -2px; border-radius: 8px; }
+.card-hint { padding-bottom: var(--space-2); }
+.card-more { animation: row-open var(--t) var(--ease) both; }
+.card-more-empty { margin: 0; font-size: 14px; }
+
+/* ---------- The "more" menu ---------- */
+
+.pop-menu {
+  position: fixed; z-index: 75; min-width: 220px; padding: 6px;
+  background: var(--color-card); border: 1px solid var(--color-border);
+  border-radius: 14px; box-shadow: var(--shadow-lg);
+  transition: opacity 150ms var(--ease), transform 150ms var(--ease);
+}
+@starting-style { .pop-menu { opacity: 0; transform: scale(0.96); } }
+.pop-menu.is-closing { opacity: 0; transform: scale(0.96); transition-duration: 120ms; pointer-events: none; }
+.pop-item {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 12px;
+  font: inherit; font-size: 15px; font-weight: 500; color: var(--color-foreground); text-align: left;
+  text-decoration: none; background: none; border: 0; border-radius: 10px; cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.pop-item .icon { width: 18px; height: 18px; color: var(--color-muted-foreground); }
+.pop-item:focus-visible, .pop-item:focus { outline: none; background: var(--color-muted); }
+@media (hover: hover) and (pointer: fine) {
+  .pop-item:hover { background: var(--color-muted); }
+}
+.pop-item.is-danger, .pop-item.is-danger .icon { color: #B91C1C; }
+.pop-sep { height: 1px; margin: 4px 6px; background: var(--color-border); }
