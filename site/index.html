@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-<meta name="theme-color" content="#FDF8F4">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#FDF8F4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#151010" media="(prefers-color-scheme: dark)">
 <meta name="description" content="Places to try, and places you've loved. A restaurant diary you can share with a friend.">
 <title>Restaurant Diary</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -255,8 +257,7 @@
     <div class="modal-body">
       <div id="step-search">
         <div class="share-source" id="share-source" hidden></div>
-        <p class="hint" id="add-hint">Pick a country, then type the name — add the city if it's a common one.
-          The address, hours and cuisine are filled in for you.</p>
+        <p class="hint" id="add-hint">Type the name, and the city if it's a common one.</p>
         <!-- Separate little forms, so the browser never sees the country, the
              search and the spot to look around as one address to save. -->
         <form class="search-row" id="search-form" role="search" autocomplete="off">

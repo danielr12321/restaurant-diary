@@ -102,12 +102,57 @@ function newSession() {
 }
 
 let toastTimer = null;
+let toastUntil = 0;
+let toastLeft = 0;
+
 function toast(message) {
   const el = $("toast");
-  el.textContent = message;
-  el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 3200);
+  el.classList.remove("is-leaving");
+  el.textContent = message;
+  // A new message replays the entrance, so it reads as new rather than as an edit.
+  if (!el.hidden) {
+    el.style.animation = "none";
+    void el.offsetWidth;
+    el.style.animation = "";
+  }
+  el.hidden = false;
+  holdToast(3200);
+}
+
+function holdToast(ms) {
+  clearTimeout(toastTimer);
+  toastUntil = Date.now() + ms;
+  toastTimer = setTimeout(hideToast, ms);
+}
+
+function hideToast() {
+  const el = $("toast");
+  if (el.hidden) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    el.hidden = true;
+    return;
+  }
+  el.classList.add("is-leaving");
+  toastTimer = setTimeout(() => {
+    el.hidden = true;
+    el.classList.remove("is-leaving");
+  }, 150);
+}
+
+// A message nobody could see doesn't count down: it waits while the tab is in
+// the background, or while the pointer rests on it.
+function pauseToast() {
+  const el = $("toast");
+  if (el.hidden || el.classList.contains("is-leaving") || !toastTimer) return;
+  clearTimeout(toastTimer);
+  toastTimer = null;
+  toastLeft = Math.max(1200, toastUntil - Date.now());
+}
+
+function resumeToast() {
+  if ($("toast").hidden || toastTimer) return;
+  holdToast(toastLeft || 1600);
 }
 
 /* ---------- OpenStreetMap opening_hours ---------- */
@@ -506,7 +551,7 @@ function toggleFavorite(id) {
     button.setAttribute("aria-label", favoriteLabel({ ...item, favorite: on }));
     button.title = on ? "Favorite" : "Mark as favorite";
     button.classList.toggle("pop", on);
-    if (on) setTimeout(() => button.classList.remove("pop"), 400);
+    if (on) setTimeout(() => button.classList.remove("pop"), 300);
   }
   updateItem(id, { favorite: on });
   if (state.sort === "favorite" || state.view === "map") render();
@@ -696,12 +741,14 @@ function moreMarkup(item) {
     : details) + "</div>";
 }
 
-function toggleCard(id) {
-  if (openCards.has(id)) openCards.delete(id);
-  else openCards.add(id);
-  const item = store.get(id);
+async function toggleCard(id) {
+  const opening = !openCards.has(id);
   const card = $("list").querySelector('.card[data-card-id="' + CSS.escape(id) + '"]');
-  if (!item || !card) {
+  if (!opening && card) await concealHeight(card.querySelector(".card-more"));
+  if (opening) openCards.add(id);
+  else openCards.delete(id);
+  const item = store.get(id);
+  if (!item || !card || !card.isConnected) {
     render();
     return;
   }
@@ -711,6 +758,7 @@ function toggleCard(id) {
   card.remove();
   hydratePhotos(next);
   next.querySelector(".card-status").focus({ preventScroll: true });
+  if (opening) revealHeight(next.querySelector(".card-more"));
 }
 
 /* ---------- the simple list ----------
@@ -728,6 +776,9 @@ function rowMarkup(item) {
 
   const branches = branchesOf(item);
   const bits = [];
+  if (nowOpen !== null) {
+    bits.push('<span class="row-open' + (nowOpen ? "" : " is-shut") + '">' + (nowOpen ? "Open" : "Closed") + "</span>");
+  }
   if (item.rating) bits.push('<span class="row-rating">' + icon("star", "on") + item.rating + "</span>");
   if (branches.length) bits.push(branches.length + " branches");
   if (cuisine) bits.push('<span class="row-cuisine">' + esc(cuisine) + "</span>");
@@ -757,12 +808,38 @@ function rowMarkup(item) {
   return html + "</li>";
 }
 
-function toggleRow(id) {
-  if (openRows.has(id)) openRows.delete(id);
-  else openRows.add(id);
-  const item = store.get(id);
+const EASE = "cubic-bezier(0.23, 1, 0.32, 1)";
+
+function reducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+// Opening details grows them from nothing, so what's below slides down rather
+// than jumping; closing shrinks them first.
+function revealHeight(el) {
+  if (!el || !el.animate || reducedMotion()) return;
+  const height = el.offsetHeight;
+  el.style.overflow = "hidden";
+  el.animate([{ height: "0px", opacity: 0 }, { height: height + "px", opacity: 1 }],
+    { duration: 220, easing: EASE })
+    .finished.then(() => { el.style.overflow = ""; }, () => { el.style.overflow = ""; });
+}
+
+function concealHeight(el) {
+  if (!el || !el.animate || reducedMotion()) return Promise.resolve();
+  el.style.overflow = "hidden";
+  return el.animate([{ height: el.offsetHeight + "px", opacity: 1 }, { height: "0px", opacity: 0 }],
+    { duration: 160, easing: EASE, fill: "forwards" }).finished.catch(() => {});
+}
+
+async function toggleRow(id) {
+  const opening = !openRows.has(id);
   const row = $("list").querySelector('[data-card-id="' + CSS.escape(id) + '"]');
-  if (!item || !row) {
+  if (!opening && row) await concealHeight(row.querySelector(".row-details"));
+  if (opening) openRows.add(id);
+  else openRows.delete(id);
+  const item = store.get(id);
+  if (!item || !row || !row.isConnected) {
     render();
     return;
   }
@@ -771,24 +848,27 @@ function toggleRow(id) {
   row.remove();
   hydratePhotos(next);
   next.querySelector(".row-main").focus({ preventScroll: true });
+  if (opening) revealHeight(next.querySelector(".row-details"));
 }
 
-// A browser that has never joined starts empty; the diary may well be waiting
-// on another device, so the first thing offered is its code.
+// A browser that has never joined starts empty. Most people here are starting
+// a diary, so that comes first; bringing one over from another device, second.
 function welcomeMarkup() {
   return '<div class="empty welcome">' +
-    '<div class="empty-mark">' + icon("users") + "</div>" +
-    "<h3>Is your diary on another device?</h3>" +
-    "<p>Type its code to bring it here. Your restaurants, notes and photos then stay in step on every " +
-    "device. You'll find the code under Invite on a device that already has the diary.</p>" +
+    '<div class="empty-mark">' + icon("book") + "</div>" +
+    "<h3>Your restaurant diary</h3>" +
+    "<p>Keep the places you want to try, and remember the ones you loved.</p>" +
+    '<button type="button" class="btn btn-primary welcome-start" data-act="add">' + icon("plus") +
+    "Add your first restaurant</button>" +
+    '<div class="welcome-code">' +
+    "<p class=\"welcome-or\">Already keeping one on another device? Type its code — it's under " +
+    "<strong>Invite</strong> there.</p>" +
     '<form class="share-join welcome-join" id="welcome-join">' +
     '<label class="sr-only" for="welcome-code">Diary code</label>' +
     '<input id="welcome-code" class="code-input" autocomplete="off" autocapitalize="characters" ' +
     'spellcheck="false" maxlength="12" placeholder="ABCD1234" enterkeyhint="go">' +
-    '<button type="submit" class="btn btn-primary">Join</button></form>' +
-    '<p class="menu-error welcome-error" id="welcome-error" role="alert" hidden></p>' +
-    '<p class="welcome-or">Starting a new diary? <button type="button" class="link-btn" data-act="add">' +
-    "Add your first restaurant</button></p></div>";
+    '<button type="submit" class="btn btn-ghost">Join</button></form>' +
+    '<p class="menu-error welcome-error" id="welcome-error" role="alert" hidden></p></div></div>';
 }
 
 function emptyMarkup() {
@@ -1011,7 +1091,7 @@ function usageMarkup(g, withSettingsLink) {
       '<span class="usage-track" role="progressbar" aria-label="' + esc(u.label) + '" ' +
       'aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + (Math.round(exact * 10) / 10) + '" ' +
       'aria-valuetext="' + shown + " of the safe limit, " + u.used + " of " + u.limit + '">' +
-      '<span class="usage-fill" style="width:' + width + '%"></span></span>' +
+      '<span class="usage-fill" style="--fill:' + (width / 100) + '"></span></span>' +
       '<span class="usage-value">' + shown + "</span>" +
       '<span class="usage-count">' + u.used.toLocaleString() + " / " +
       u.limit.toLocaleString() + "</span></div>";
@@ -2839,7 +2919,11 @@ function openAdd() {
   applyGoogleStatus();
   refreshUsage();
   openLayer("add-modal", closeAdd, confirmLeaveAdd);
-  setTimeout(() => $("place-search").focus(), 60);
+  // With a mouse the search is ready to type into. On a phone that would raise
+  // the keyboard over the other half of the dialog, so it waits for a tap.
+  if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+    setTimeout(() => $("place-search").focus(), 60);
+  }
 }
 
 function closeAdd() {
@@ -4545,6 +4629,10 @@ document.addEventListener("keydown", (event) => {
 // unsaved rating or review. Closing is always deliberate: Cancel, X, Esc or Back.
 
 /* ---------- keeping in step ---------- */
+
+document.addEventListener("visibilitychange", () => (document.hidden ? pauseToast() : resumeToast()));
+$("toast").addEventListener("pointerenter", pauseToast);
+$("toast").addEventListener("pointerleave", resumeToast);
 
 store.subscribe((reason) => {
   if (reason === "remote") redrawForRemote();
