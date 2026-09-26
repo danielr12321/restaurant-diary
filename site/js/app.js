@@ -53,10 +53,12 @@ const state = {
   choosing: false,
   sharedLink: "",
   suggested: null,
-  // what "recommend me one" should look for: kind of place, and where
+  // what "recommend me one" should look for: kind of place, and where. It
+  // starts at "any type, anywhere"; only the last spot and distance are kept.
   suggest: {
-    type: "", where: "country", radius: 5, point: null,
-    ...(readSetting("suggest-filters", null) || {}),
+    type: "", where: "country",
+    radius: Number((readSetting("suggest-filters", null) || {}).radius) || 5,
+    point: (readSetting("suggest-filters", null) || {}).point || null,
   },
   branches: [],
   detailsBranches: [],
@@ -541,6 +543,7 @@ function detailsMarkup(item) {
     html += '<div class="meta-row">' + icon("crosshair") +
       "<span>" + esc(formatDistance(km)) + "</span></div>";
   }
+  html += chainHintMarkup(item);
   html += menuRowMarkup(item);
   const source = safeUrl(item.source_url);
   if (source) {
@@ -1405,39 +1408,44 @@ function sameAddress(a, b, cities) {
   return shorter.length > 0 && shorter.every((word) => longer.includes(word));
 }
 
-function findDuplicates(place) {
-  const names = [place.name, place.local_name].map(normalizeName).filter(Boolean);
+function sameIds(a, b) {
+  if (a.google_place_id && a.google_place_id === b.google_place_id) return true;
+  return !!(a.osm_id && b.osm_id && String(a.osm_id) === String(b.osm_id) &&
+    (a.osm_type || "") === (b.osm_type || ""));
+}
+
+// The same name is not enough — branches of a chain all share it. It's the
+// same place only when the address matches too, or when the two pins sit on
+// the same doorstep (one address in Hebrew and one in English, say).
+function samePlace(place, other) {
   const address = place.address || place.full_address || "";
   const lat = parseFloat(place.lat);
   const lon = parseFloat(place.lon);
-  const located = isFinite(lat) && isFinite(lon);
+  const otherLat = parseFloat(other.lat);
+  const otherLon = parseFloat(other.lon);
+  const km = isFinite(lat) && isFinite(lon) && isFinite(otherLat) && isFinite(otherLon)
+    ? haversineKm({ lat: lat, lon: lon }, { lat: otherLat, lon: otherLon }) : null;
+  if (km !== null && km <= 0.05) return true;
+  if (address && other.address) {
+    // The same street name in two different towns isn't the same place.
+    if (km !== null && km > 2) return false;
+    return sameAddress(address, other.address, [place.city, other.city]);
+  }
+  return km !== null && km <= 0.15;
+}
 
+function findDuplicates(place) {
+  const names = [place.name, place.local_name].map(normalizeName).filter(Boolean);
   return state.items.filter((item) => {
-    if (place.google_place_id && place.google_place_id === item.google_place_id) return true;
-    if (place.osm_id && item.osm_id && String(place.osm_id) === String(item.osm_id) &&
-        (place.osm_type || "") === (item.osm_type || "")) {
-      return true;
-    }
+    // A chain is at each of its branches as much as at its own address.
+    const spots = [item].concat(branchesOf(item));
+    if (spots.some((spot) => sameIds(place, spot))) return true;
     // A Google suggestion has no location yet, so a name alone would flag every
     // branch of a chain; the full check runs once its details are loaded.
     if (place.needs_details) return false;
     const itemNames = [item.name, item.local_name].map(normalizeName).filter(Boolean);
     if (!names.some((a) => itemNames.some((b) => namesMatch(a, b)))) return false;
-
-    // The same name is not enough — branches of a chain all share it. It's the
-    // same place only when the address matches too, or when the two pins sit on
-    // the same doorstep (one address in Hebrew and one in English, say).
-    const itemLat = parseFloat(item.lat);
-    const itemLon = parseFloat(item.lon);
-    const km = located && isFinite(itemLat) && isFinite(itemLon)
-      ? haversineKm({ lat: lat, lon: lon }, { lat: itemLat, lon: itemLon }) : null;
-    if (km !== null && km <= 0.05) return true;
-    if (address && item.address) {
-      // The same street name in two different towns isn't the same place.
-      if (km !== null && km > 2) return false;
-      return sameAddress(address, item.address, [place.city, item.city]);
-    }
-    return km !== null && km <= 0.15;
+    return spots.some((spot) => samePlace(place, spot));
   });
 }
 
@@ -1455,8 +1463,131 @@ function alreadyInDiary(place) {
   }));
 }
 
+/** The save button says what saving will do. */
+function showBranchChoice() {
+  if (!state.chainWith || !$("dup-warning").hidden) return;
+  $("save-place").textContent = $("branch-check").checked ? "Add as a branch" : "Save restaurant";
+}
+
 function listName(item) {
   return item.status === "visited" ? "your visits" : "your wishlist";
+}
+
+/* ---------- one chain, one entry ----------
+   Two places by the same name at different addresses are most likely branches
+   of one chain. The diary offers to keep them as a single entry, both when the
+   second one is added and for pairs that are already saved apart. */
+
+const chainKeys = new Map();
+function chainNames(place) {
+  return [place.name, place.local_name].filter(Boolean).map((name) => {
+    if (!chainKeys.has(name)) chainKeys.set(name, chainKey(name));
+    return chainKeys.get(name);
+  }).filter(Boolean);
+}
+
+/** Other entries that look like branches of the same chain as `place`. */
+function chainMates(place, exceptId) {
+  const keys = chainNames(place);
+  if (!keys.length) return [];
+  return state.items.filter((item) => item.id !== exceptId &&
+    chainNames(item).some((key) => keys.includes(key)));
+}
+
+function branchFrom(place) {
+  return {
+    name: place.name || "", address: place.address || "", city: place.city || "",
+    lat: place.lat || "", lon: place.lon || "", opening_hours: place.opening_hours || "",
+    phone: place.phone || "", osm_id: place.osm_id || null, osm_type: place.osm_type || null,
+    google_place_id: place.google_place_id || "",
+  };
+}
+
+/** The branches an entry stands for: its own list, or itself if it isn't a chain yet. */
+function branchesFor(item) {
+  return item.chain && Array.isArray(item.branches) && item.branches.length
+    ? item.branches.slice() : [branchFrom(item)];
+}
+
+/** What `into` takes on from `other` when the two become one entry. */
+function mergedChanges(into, other) {
+  const branches = branchesFor(into);
+  branchesFor(other).forEach((branch) => {
+    if (!branches.some((known) => sameIds(branch, known) || samePlace(branch, known))) branches.push(branch);
+  });
+  const changes = { chain: true, branches, branches_at: into.branches_at || nowIso() };
+  // Nothing either one says is lost: been to one branch is been to the chain.
+  if (other.status === "visited" && into.status !== "visited") {
+    changes.status = "visited";
+    changes.visited_at = other.visited_at || nowIso();
+  }
+  const join = (a, b) => [a, b].map((text) => (text || "").trim()).filter(Boolean)
+    .filter((text, i, all) => all.indexOf(text) === i).join("\n\n");
+  if (other.review) changes.review = join(into.review, other.review);
+  if (other.wish_note) changes.wish_note = join(into.wish_note, other.wish_note);
+  if ((other.dishes || []).length) changes.dishes = [...new Set((into.dishes || []).concat(other.dishes))];
+  if (other.favorite && !into.favorite) changes.favorite = true;
+  ["rating", "price", "website", "phone", "cuisine", "source_url", "google_maps_uri", "menu"].forEach((key) => {
+    if (!into[key] && other[key]) changes[key] = other[key];
+  });
+  return changes;
+}
+
+/** Makes an entry and the others by its name one chain. */
+function mergeChain(id) {
+  const item = state.items.find((i) => i.id === id);
+  if (!item) return;
+  const group = [item].concat(chainMates(item, id));
+  if (group.length < 2) return;
+  // Photos belong to the entry they were added to, so that one is the one kept.
+  const withPhotos = group.filter((i) => (i.photos || []).length);
+  if (withPhotos.length > 1) {
+    toast("Both " + item.name + " entries have photos, so they can't be joined yet — " +
+      "remove the photos from one of them first.");
+    return;
+  }
+  const keep = withPhotos[0] || group.find((i) => i.chain) || group.find((i) => i.status === "visited") || item;
+  const others = group.filter((i) => i !== keep);
+  if (!window.confirm("Make " + keep.name + " one entry with all " + group.length + " branches? " +
+      "Notes, reviews and ratings from each are kept on it.")) {
+    return;
+  }
+  let merged = keep;
+  let changes = {};
+  others.forEach((other) => {
+    const more = mergedChanges(merged, other);
+    changes = { ...changes, ...more };
+    merged = { ...merged, ...more };
+  });
+  updateItem(keep.id, changes);
+  others.forEach((other) => deleteItem(other.id));
+  // Show the joined entry where it now lives (a visit to one branch counts).
+  state.tab = merged.status;
+  syncTabs();
+  render();
+  toast(keep.name + " is one entry now, with " + merged.branches.length + " branches.");
+}
+
+/** "These just share a name": stop offering to join them. */
+function keepApart(id) {
+  const item = state.items.find((i) => i.id === id);
+  if (!item) return;
+  [item].concat(chainMates(item, id)).forEach((i) => updateItem(i.id, { chain_apart: true }));
+  render();
+}
+
+function chainHintMarkup(item) {
+  if (item.chain_apart) return "";
+  const mates = chainMates(item, item.id).filter((mate) => !mate.chain_apart);
+  if (!mates.length) return "";
+  const where = mates.map((mate) => esc(mate.address || mate.city || "another address") +
+    (mate.status !== item.status ? " (" + (mate.status === "visited" ? "been there" : "want to go") + ")" : ""));
+  return '<div class="meta-row chain-hint">' + icon("pin") + "<span>Also in your diary at " +
+    where.join(", ") + ". " +
+    '<button type="button" class="link-btn" data-act="merge" data-id="' + esc(item.id) +
+    '">Make it one chain</button> · ' +
+    '<button type="button" class="link-btn" data-act="apart" data-id="' + esc(item.id) +
+    '">Not the same place</button></span></div>';
 }
 
 function renderDuplicateWarning(place) {
@@ -1645,7 +1776,12 @@ function resetAddModal() {
   state.suggested = null;
   showSharedSource("");
   suggestionBox("");
-  showSuggestLabel();
+  // Every visit starts from "any type, anywhere"; the last spot and distance
+  // are kept for when they're chosen again.
+  state.suggest.type = "";
+  state.suggest.where = "country";
+  $("suggest-type").value = "";
+  showSuggestArea();
   clearDraftPhotos();
 }
 
@@ -1937,8 +2073,11 @@ function addToPool(key, places) {
   places.forEach((place) => {
     if (!known.has(place.google_place_id)) pool.push(place);
   });
-  // A little shuffle so the answer isn't Google's order every evening.
-  pools.set(key, pool.sort(() => Math.random() - 0.5));
+  // Shuffled, so the answer isn't Google's order every evening, but the places
+  // people rate well (and in numbers) come round before the rest.
+  const praised = (place) => place.google_rating >= 4.2 && place.google_rating_count >= 100;
+  const shuffled = pool.sort(() => Math.random() - 0.5);
+  pools.set(key, shuffled.filter(praised).concat(shuffled.filter((place) => !praised(place))));
 }
 
 function suggestWhereText() {
@@ -1958,11 +2097,17 @@ function showSuggestion(place) {
     { lat: from.lat, lon: from.lon },
     { lat: parseFloat(place.lat), lon: parseFloat(place.lon) },
   ) : null;
+  const maps = safeUrl(place.google_maps_uri);
+  // The same facts a search result shows once it's picked.
   suggestionBox('<div class="suggestion-head">' + icon("sparkle") +
     "<span>Well known " + esc(suggestWhereText()) + "</span></div>" +
     "<h3>" + esc(place.name) + "</h3>" +
-    '<p class="suggestion-where">' + esc([kind, place.full_address || place.address]
-      .filter(Boolean).join(" · ")) + (km !== null ? " · " + esc(formatDistance(km)) : "") + "</p>" +
+    '<p class="suggestion-where">' + esc(kind) + (place.price ? " · " + priceStatic(place.price) : "") +
+    (km !== null ? " · " + esc(formatDistance(km)) : "") + "</p>" +
+    '<div class="card-meta">' + metaMarkup(place, true) +
+    (maps ? '<div class="meta-row">' + icon("external") + '<span><a href="' + esc(maps) +
+      '" target="_blank" rel="noopener noreferrer">See it on Google Maps</a></span></div>' : "") +
+    "</div>" +
     '<div class="suggestion-actions">' +
     '<button type="button" class="btn btn-primary btn-sm" data-suggest="take">' + icon("plus") +
     "Add this one</button>" +
@@ -2110,9 +2255,6 @@ function openAdd() {
   applyGoogleStatus();
   refreshUsage();
   openLayer("add-modal", closeAdd, confirmLeaveAdd);
-  // Last time's "pick a spot" is still chosen: its map needs drawing (or
-  // re-measuring, now the dialog has a size again).
-  if (state.suggest.where === "spot") ensureSpotMap();
   setTimeout(() => $("place-search").focus(), 60);
 }
 
@@ -2316,11 +2458,28 @@ function showConfirm(place) {
     });
   }
 
+  // Another branch of a place already saved: offer to keep them as one entry.
+  const duplicates = findDuplicates(place);
+  const mates = manual ? [] : chainMates(place, null).filter((mate) => !duplicates.includes(mate));
+  state.chainWith = mates.find((mate) => mate.chain) || mates[0] || null;
+  $("branch-option").hidden = !state.chainWith;
+  if (state.chainWith) {
+    const mate = state.chainWith;
+    const count = branchesFor(mate).length + 1;
+    $("branch-check").checked = !mate.chain_apart;
+    $("branch-title").textContent = "Add as another branch of " + mate.name;
+    $("branch-help").textContent = mate.name + " is already in " + listName(mate) +
+      (mate.chain ? " with " + branchesFor(mate).length + " branches"
+        : " (" + (mate.address || mate.city || "another address") + ")") +
+      ". This keeps one entry with " + count + " branches, and Near me uses the closest.";
+    showBranchChoice();
+  }
+
   // Chains: ask the built-in Israeli list whether this name is in many places.
   state.branches = [];
   $("chain-option").hidden = true;
   $("chain-check").checked = false;
-  if (!manual && place.name) {
+  if (!manual && place.name && !state.chainWith) {
     const country = place.country_code || state.searchCountry || HOME_COUNTRY;
     findBranches(place.name, country).then((branches) => {
       if (state.selectedPlace !== place || branches.length < 3) return;
@@ -2413,20 +2572,20 @@ async function savePlace() {
 
   if (!item.name) { toast("Give the restaurant a name first."); return; }
 
+  const mate = state.chainWith && $("branch-check").checked ? store.get(state.chainWith.id) : null;
+  if (mate) {
+    fillPersonal(item, status);
+    await saveAsBranch(mate, item);
+    return;
+  }
+
   if ($("chain-check").checked && state.branches.length) {
     item.chain = true;
     item.branches = state.branches;
     item.branches_at = nowIso();
   }
 
-  if (status === "visited") {
-    item.rating = state.draftRating;
-    item.review = $("review").value.trim();
-    item.dishes = $("dishes").value.split(",").map((d) => d.trim()).filter(Boolean);
-    item.visited_at = nowIso();
-  } else {
-    item.wish_note = $("wish-note").value.trim();
-  }
+  fillPersonal(item, status);
 
   const button = $("save-place");
   const buttonText = button.textContent;
@@ -2457,6 +2616,42 @@ async function savePlace() {
       if (updated && updated.menu && updated.menu.url) toast("Found a menu for " + updated.name + ".");
     });
   }
+}
+
+/** What was written in the add dialog: a review for a visit, a note for the wishlist. */
+function fillPersonal(item, status) {
+  if (status === "visited") {
+    item.rating = state.draftRating;
+    item.review = $("review").value.trim();
+    item.dishes = $("dishes").value.split(",").map((d) => d.trim()).filter(Boolean);
+    item.visited_at = nowIso();
+  } else {
+    item.wish_note = $("wish-note").value.trim();
+  }
+}
+
+/** The new place joins an entry already saved, as one more of its branches. */
+async function saveAsBranch(mate, item) {
+  const changes = mergedChanges(mate, item);
+  updateItem(mate.id, changes);
+
+  const button = $("save-place");
+  const buttonText = button.textContent;
+  let upload = null;
+  if (item.status === "visited" && state.pendingPhotos.length) {
+    button.disabled = true;
+    upload = await addPhotos(mate.id, state.pendingPhotos.map((p) => p.file), (n, total) => {
+      button.textContent = "Saving photo " + n + " of " + total + "…";
+    });
+    button.textContent = buttonText;
+    button.disabled = false;
+  }
+
+  closeAdd();
+  state.tab = changes.status || mate.status;
+  syncTabs();
+  if (upload && upload.failures.length) reportUpload(upload);
+  else toast(mate.name + " now has " + changes.branches.length + " branches in one entry.");
 }
 
 /* ---------- review modal ---------- */
@@ -3091,6 +3286,7 @@ setInterval(() => {
   lastVisibleIds = ids;
 }, 60000);
 $("save-place").addEventListener("click", savePlace);
+$("branch-check").addEventListener("change", showBranchChoice);
 
 $("place-search").addEventListener("input", (event) => {
   const query = event.target.value.trim();
@@ -3210,6 +3406,11 @@ $("results-empty").addEventListener("click", (event) => {
 });
 
 $("suggest-btn").addEventListener("click", () => recommend());
+// Both are forms only to keep the browser's address saving out of them; Enter
+// is handled by the fields themselves.
+["search-form", "recommend"].forEach((id) => {
+  $(id).addEventListener("submit", (event) => event.preventDefault());
+});
 $("suggest-type").addEventListener("change", (event) => {
   state.suggest.type = event.target.value;
   saveSuggestFilters();
@@ -3242,16 +3443,16 @@ $("where-seg").addEventListener("click", (event) => {
   });
 });
 $("spot-find").addEventListener("click", () => findSpot());
-$("spot-address").addEventListener("keydown", (event) => {
+$("spot-query").addEventListener("keydown", (event) => {
   if (event.key !== "Enter") return;
   event.preventDefault();
   findSpot();
 });
 
 async function findSpot() {
-  const query = $("spot-address").value.trim();
+  const query = $("spot-query").value.trim();
   if (!query) {
-    $("spot-address").focus();
+    $("spot-query").focus();
     return;
   }
   const button = $("spot-find");
@@ -3275,7 +3476,7 @@ $("suggestion").addEventListener("click", (event) => {
     return;
   }
   const place = state.suggested;
-  if (place) choosePlace({ ...place, needs_details: true }, null);
+  if (place) showConfirm(place);
 });
 
 $("share-source").addEventListener("click", (event) => {
@@ -3350,6 +3551,8 @@ $("list").addEventListener("click", (event) => {
   else if (action === "menu") openMenu(trigger.dataset.id);
   else if (action === "details") openDetails(trigger.dataset.id);
   else if (action === "branches") openBranches(trigger.dataset.id);
+  else if (action === "merge") mergeChain(trigger.dataset.id);
+  else if (action === "apart") keepApart(trigger.dataset.id);
   else if (action === "expand") toggleRow(trigger.dataset.id);
 });
 

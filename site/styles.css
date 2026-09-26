@@ -553,6 +553,9 @@ select {
 .chain-text { min-width: 0; }
 .chain-text .field-help { margin-top: 2px; }
 .branch-more { margin-left: 6px; }
+.branch-option { border-color: #E9C98B; background: var(--color-accent-soft); }
+.chain-hint { color: #713F12; }
+.chain-hint .link-btn[data-act="merge"] { color: var(--color-primary); font-weight: 600; }
 
 .branch-list { list-style: none; margin: 0; padding: 0; }
 .branch-list li {
@@ -685,7 +688,11 @@ select {
   margin: var(--space-1) 0 0; font-size: 14px; color: var(--color-muted-foreground);
 }
 .suggestion-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+/* Two equal buttons side by side; they only stack when the card is too narrow. */
+.suggestion-actions .btn { flex: 1 1 auto; padding: 0 12px; }
 .suggestion-actions .btn:active { transform: scale(0.97); }
+/* The same facts as a search result, lined up under the name rather than indented. */
+.suggestion .card-meta { padding: 0; margin-top: 12px; }
 .suggestion .menu-message, .suggestion .menu-status, .suggestion .menu-error { margin: 0; }
 
 .share-source {

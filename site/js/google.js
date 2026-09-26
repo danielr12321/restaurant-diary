@@ -15,8 +15,8 @@ import { readSetting, writeSetting } from "./store.js";
 
 // Free monthly usage per type. Place Details is billed at the Enterprise tier
 // because it asks for hours, phone, website, price and rating.
-export const FREE_MONTHLY = { details: 1000, autocomplete: 10000, map_load: 10000, suggest: 5000 };
-export const LIMITS = { details: 900, autocomplete: 9000, map_load: 9000, suggest: 4500 };
+export const FREE_MONTHLY = { details: 1000, autocomplete: 10000, map_load: 10000, suggest: 1000 };
+export const LIMITS = { details: 900, autocomplete: 9000, map_load: 9000, suggest: 900 };
 const LABELS = {
   details: "Place details", autocomplete: "Search suggestions", map_load: "Map loads",
   suggest: "Recommendations",
@@ -359,13 +359,17 @@ export async function autocomplete(query, session, country) {
   return places.filter((place) => place.is_food);
 }
 
-// Only Pro-tier fields: a rating or a price here would move the whole search to
-// the priciest tier, and Google's own ranking already puts the well-known
-// places first. The rating arrives with the details of the one that's picked.
-const SUGGEST_FIELDS = [
+// Finding a chain's branches needs only where they are: Pro-tier fields.
+const BRANCH_FIELDS = [
   "places.id", "places.displayName", "places.formattedAddress", "places.shortFormattedAddress",
   "places.addressComponents", "places.location", "places.primaryType", "places.types",
 ].join(",");
+
+// A recommendation is shown like any search result, so it asks for what Place
+// Details would: rating, price, hours, phone and website. That's the Enterprise
+// tier (1,000 free a month rather than 5,000), but one search brings twenty
+// complete places, and adding one then needs no further lookup.
+const SUGGEST_FIELDS = DETAILS_FIELDS.split(",").map((field) => "places." + field).join(",");
 
 /**
  * Well-known places for "recommend me one". `query` is asked as typed; `area`,
@@ -429,7 +433,7 @@ export async function findBranchesOnline(name, country, where) {
     pageSize: 20,
   };
   const raw = await billedCall("suggest", "POST", "/places:searchText", key,
-    { body, fieldMask: SUGGEST_FIELDS });
+    { body, fieldMask: BRANCH_FIELDS });
   return (raw.places || []).map(normalizeDetails).filter((place) => place.is_food);
 }
 

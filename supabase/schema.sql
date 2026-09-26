@@ -153,7 +153,7 @@ returns integer language sql immutable as $$
     when 'details' then 900        -- Place Details (Enterprise), 1,000 free
     when 'autocomplete' then 9000  -- Autocomplete (Essentials), 10,000 free
     when 'map_load' then 9000      -- Dynamic Maps, 10,000 free
-    when 'suggest' then 4500       -- Text Search (Pro), 5,000 free
+    when 'suggest' then 900        -- Text Search (Enterprise), 1,000 free
   end;
 $$;
 

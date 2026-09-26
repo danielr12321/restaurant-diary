@@ -256,7 +256,9 @@
         <div class="share-source" id="share-source" hidden></div>
         <p class="hint" id="add-hint">Pick a country, then type the name — add the city if it's a common one.
           The address, hours and cuisine are filled in for you.</p>
-        <div class="search-row">
+        <!-- Separate little forms, so the browser never sees the country, the
+             search and the spot to look around as one address to save. -->
+        <form class="search-row" id="search-form" role="search" autocomplete="off">
           <label class="chip chip-select country-chip" id="country-wrap" title="Only search in this country">
             <svg class="icon" aria-hidden="true"><use href="#i-globe"/></svg>
             <span class="sr-only">Country to search in</span>
@@ -272,8 +274,8 @@
                    aria-autocomplete="list">
             <span class="spinner" id="search-spinner" hidden></span>
           </div>
-        </div>
-        <section class="recommend" id="recommend" aria-labelledby="recommend-title">
+        </form>
+        <form class="recommend" id="recommend" aria-labelledby="recommend-title" autocomplete="off">
           <div class="recommend-head">
             <span class="recommend-mark" aria-hidden="true"><svg class="icon"><use href="#i-sparkle"/></svg></span>
             <div>
@@ -305,8 +307,8 @@
 
           <div class="rec-area" id="suggest-area" hidden>
             <div class="menu-paste-row" id="spot-search" hidden>
-              <input type="text" id="spot-address" autocomplete="off" enterkeyhint="search"
-                     placeholder="Street and city — or tap the map" aria-label="Address to search around">
+              <input type="text" id="spot-query" name="spot-query" autocomplete="off" enterkeyhint="search"
+                     placeholder="e.g. Dizengoff 100, Tel Aviv — or tap the map" aria-label="Place to look around">
               <button type="button" class="btn btn-ghost btn-sm" id="spot-find">Find</button>
             </div>
             <div class="spot-map" id="spot-map" hidden></div>
@@ -331,7 +333,7 @@
             <span id="suggest-label">Recommend one</span>
           </button>
           <div class="suggestion" id="suggestion" role="status" hidden></div>
-        </section>
+        </form>
         <p class="search-notice" id="search-notice" role="status" hidden></p>
         <ul class="results" id="results" role="listbox" aria-label="Search results"></ul>
         <p class="search-credit" id="search-credit" hidden>Results from Google Maps</p>
@@ -341,6 +343,14 @@
       <div id="step-confirm" hidden>
         <div class="dup-warning" id="dup-warning" role="alert" hidden></div>
         <div class="preview" id="preview"></div>
+
+        <label class="chain-option branch-option" id="branch-option" hidden>
+          <input type="checkbox" id="branch-check" checked>
+          <span class="chain-text">
+            <strong id="branch-title">Add as another branch</strong>
+            <span class="field-help" id="branch-help"></span>
+          </span>
+        </label>
 
         <label class="chain-option" id="chain-option" hidden>
           <input type="checkbox" id="chain-check">
