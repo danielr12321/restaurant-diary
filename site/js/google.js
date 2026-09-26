@@ -382,17 +382,36 @@ export async function suggestPlaces(country, query, options = {}) {
     pageSize: 20,
   };
   const area = options.area;
-  if (area && isFinite(area.lat) && isFinite(area.lon)) {
+  const located = area && isFinite(area.lat) && isFinite(area.lon);
+  const radiusKm = located ? Math.min(50, Math.max(0.5, Number(area.radius) || 5)) : 0;
+  if (located) {
+    // Text Search only restricts to a rectangle (a circle is merely a "bias"),
+    // so ask for the box around the circle and trim its corners off below.
+    const lat = Number(area.lat);
+    const lon = Number(area.lon);
+    const dLat = radiusKm / 111.32;
+    const dLon = radiusKm / (111.32 * Math.max(0.01, Math.cos(lat * Math.PI / 180)));
     body.locationRestriction = {
-      circle: {
-        center: { latitude: Number(area.lat), longitude: Number(area.lon) },
-        radius: Math.min(50000, Math.max(500, (area.radius || 5) * 1000)),
+      rectangle: {
+        low: { latitude: lat - dLat, longitude: lon - dLon },
+        high: { latitude: lat + dLat, longitude: lon + dLon },
       },
     };
   }
   const raw = await billedCall("suggest", "POST", "/places:searchText", key,
     { body, fieldMask: SUGGEST_FIELDS });
-  return (raw.places || []).map(normalizeDetails).filter((place) => place.is_food);
+  return (raw.places || []).map(normalizeDetails).filter((place) => place.is_food &&
+    (!located || kmBetween(area, place) <= radiusKm));
+}
+
+function kmBetween(from, to) {
+  const rad = Math.PI / 180;
+  const lat1 = Number(from.lat) * rad;
+  const lat2 = parseFloat(to.lat) * rad;
+  const dLat = lat2 - lat1;
+  const dLon = (parseFloat(to.lon) - Number(from.lon)) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(h));
 }
 
 /**

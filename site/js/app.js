@@ -1649,6 +1649,12 @@ function resetAddModal() {
   clearDraftPhotos();
 }
 
+// The card and the search are two ways in: while a name is being typed, the
+// results get the room.
+function showRecommend() {
+  $("recommend").hidden = !!$("place-search").value.trim() || !$("share-source").hidden;
+}
+
 function setSearchNotice(text) {
   $("search-notice").textContent = text;
   $("search-notice").hidden = !text;
@@ -1751,15 +1757,28 @@ function showSuggestLabel() {
   syncChipValues();
 }
 
+const RADII = [1, 2, 5, 10, 25, 50];
+
+/** Moves a switch's highlight to the chosen option. */
+function setSegment(group, attribute, value) {
+  const options = [...group.querySelectorAll("[" + attribute + "]")];
+  const index = Math.max(0, options.findIndex((option) => option.getAttribute(attribute) === String(value)));
+  options.forEach((option, i) => {
+    option.setAttribute("aria-checked", i === index ? "true" : "false");
+    option.tabIndex = i === index ? 0 : -1;
+  });
+  group.style.setProperty("--index", index);
+}
+
 function showSuggestArea() {
   const mode = state.suggest.where;
-  document.querySelectorAll("[data-where]").forEach((chip) => {
-    chip.classList.toggle("is-on", chip.dataset.where === mode);
-  });
+  if (!RADII.includes(state.suggest.radius)) state.suggest.radius = 5;
+  setSegment($("where-seg"), "data-where", mode);
+  setSegment($("radius-seg"), "data-radius", state.suggest.radius);
   $("suggest-area").hidden = mode === "country";
   $("spot-search").hidden = mode !== "spot";
   $("spot-map").hidden = mode !== "spot";
-  $("radius-label").textContent = mode === "me" ? "How far from you?" : "How far from the spot?";
+  $("radius-label").textContent = mode === "me" ? "How far from you" : "How far from the spot";
   const point = state.suggest.point;
   $("spot-label").textContent = point && mode === "spot" ? "Looking around " + point.label
     : mode === "me" && point ? "Looking around where you are now" : "";
@@ -1873,8 +1892,16 @@ async function setSuggestWhere(mode) {
 /* ---------- asking Google ---------- */
 
 function suggestionBox(html) {
-  $("suggestion").innerHTML = html;
-  $("suggestion").hidden = !html;
+  const box = $("suggestion");
+  const swapping = !box.hidden && !!box.innerHTML && !!html;
+  box.innerHTML = html;
+  box.hidden = !html;
+  // A new answer where the last one was: a quick blur-in reads as "this
+  // changed", where a hard swap reads as a flicker.
+  if (swapping && box.animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    box.animate([{ opacity: 0.35, filter: "blur(3px)" }, { opacity: 1, filter: "blur(0)" }],
+      { duration: 220, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+  }
 }
 
 // What this device has already been offered for these filters, so tomorrow's
@@ -1924,7 +1951,7 @@ function suggestWhereText() {
 
 function showSuggestion(place) {
   state.suggested = place;
-  const kind = (place.place_type || "restaurant").replace(/_/g, " ");
+  const kind = typeName(place.place_type) || "Restaurant";
   // How far from the spot searched around, or from you when searching anywhere.
   const from = suggestArea() || state.origin;
   const km = from ? haversineKm(
@@ -1964,6 +1991,9 @@ async function recommend() {
 
   suggestionBox('<p class="menu-status">' + spinnerMarkup() + "Looking for a good place " +
     esc(suggestWhereText()) + "…</p>");
+  const button = $("suggest-btn");
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
   try {
     // Ask a different way until something new comes back (or it's clear this
     // corner has been mined out for now).
@@ -1992,6 +2022,9 @@ async function recommend() {
       (/unknown request kind|violates check constraint|invalid usage/i.test(err.message)
         ? " Run supabase/schema.sql once more so the diary counts recommendations too." : "") + "</p>");
     applyGoogleStatus();
+  } finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
   }
 }
 
@@ -2005,6 +2038,7 @@ function showSharedSource(html) {
   $("share-source").innerHTML = html;
   $("share-source").hidden = !html;
   $("add-hint").hidden = !!html;
+  showRecommend();
 }
 
 function sharedBox(who, inner) {
@@ -2013,6 +2047,7 @@ function sharedBox(who, inner) {
 
 function searchFor(name) {
   $("place-search").value = name;
+  showRecommend();
   runSearch(name);
 }
 
@@ -2075,6 +2110,9 @@ function openAdd() {
   applyGoogleStatus();
   refreshUsage();
   openLayer("add-modal", closeAdd, confirmLeaveAdd);
+  // Last time's "pick a spot" is still chosen: its map needs drawing (or
+  // re-measuring, now the dialog has a size again).
+  if (state.suggest.where === "spot") ensureSpotMap();
   setTimeout(() => $("place-search").focus(), 60);
 }
 
@@ -3056,6 +3094,7 @@ $("save-place").addEventListener("click", savePlace);
 
 $("place-search").addEventListener("input", (event) => {
   const query = event.target.value.trim();
+  showRecommend();
   clearTimeout(searchTimer);
   if (query.length < 3) {
     searchSeq += 1;
@@ -3171,27 +3210,36 @@ $("results-empty").addEventListener("click", (event) => {
 });
 
 $("suggest-btn").addEventListener("click", () => recommend());
-$("suggest-toggle").addEventListener("click", () => {
-  const open = $("suggest-panel").hidden;
-  $("suggest-panel").hidden = !open;
-  $("suggest-toggle").setAttribute("aria-expanded", open ? "true" : "false");
-  $("suggest-toggle").textContent = open ? "Hide the choices" : "Type and area";
-  if (open && state.suggest.where === "spot") ensureSpotMap();
-});
 $("suggest-type").addEventListener("change", (event) => {
   state.suggest.type = event.target.value;
   saveSuggestFilters();
   suggestionBox("");
   showSuggestLabel();
 });
-$("suggest-radius").addEventListener("change", (event) => {
-  state.suggest.radius = Number(event.target.value);
+$("radius-seg").addEventListener("click", (event) => {
+  const option = event.target.closest("[data-radius]");
+  if (!option) return;
+  state.suggest.radius = Number(option.dataset.radius);
   saveSuggestFilters();
   suggestionBox("");
   showSuggestArea();
 });
-document.querySelectorAll("[data-where]").forEach((chip) => {
-  chip.addEventListener("click", () => setSuggestWhere(chip.dataset.where));
+$("where-seg").addEventListener("click", (event) => {
+  const option = event.target.closest("[data-where]");
+  if (option && option.dataset.where !== state.suggest.where) setSuggestWhere(option.dataset.where);
+});
+// Arrow keys move along a switch, as they do in any radio group.
+["where-seg", "radius-seg"].forEach((id) => {
+  $(id).addEventListener("keydown", (event) => {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    const options = [...$(id).querySelectorAll("button")];
+    const now = options.findIndex((option) => option.getAttribute("aria-checked") === "true");
+    const next = options[(now + step + options.length) % options.length];
+    next.click();
+    next.focus();
+  });
 });
 $("spot-find").addEventListener("click", () => findSpot());
 $("spot-address").addEventListener("keydown", (event) => {
@@ -3610,7 +3658,6 @@ if ("serviceWorker" in navigator && !IS_LOCAL) {
 buildCountryOptions();
 showSearchCountry();
 buildKindOptions();
-$("suggest-radius").value = String(state.suggest.radius);
 showSuggestArea();
 applyGoogleStatus();
 renderShareButton();

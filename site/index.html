@@ -273,63 +273,65 @@
             <span class="spinner" id="search-spinner" hidden></span>
           </div>
         </div>
-        <div class="suggest-row">
-          <button type="button" class="btn btn-ghost btn-sm" id="suggest-btn">
-            <svg class="icon" aria-hidden="true"><use href="#i-sparkle"/></svg>
-            <span id="suggest-label">Recommend one</span>
-          </button>
-          <button type="button" class="link-btn suggest-toggle" id="suggest-toggle"
-                  aria-expanded="false" aria-controls="suggest-panel">Type and area</button>
-        </div>
+        <section class="recommend" id="recommend" aria-labelledby="recommend-title">
+          <div class="recommend-head">
+            <span class="recommend-mark" aria-hidden="true"><svg class="icon"><use href="#i-sparkle"/></svg></span>
+            <div>
+              <h3 id="recommend-title">Not sure where to go?</h3>
+              <p>Get a well-known place that isn't in your diary yet.</p>
+            </div>
+          </div>
 
-        <div class="suggest-panel" id="suggest-panel" hidden>
-          <div class="suggest-line">
-            <span class="field-label">What kind?</span>
-            <label class="chip chip-select">
+          <div class="rec-field">
+            <span class="rec-label" id="kind-label">Kind of place</span>
+            <label class="rec-select">
               <svg class="icon" aria-hidden="true"><use href="#i-utensils"/></svg>
-              <span class="sr-only">Type of place</span>
               <span class="chip-value" data-for="suggest-type" aria-hidden="true"></span>
-              <select id="suggest-type"></select>
-              <svg class="icon chip-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+              <select id="suggest-type" aria-labelledby="kind-label"></select>
+              <svg class="icon rec-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
             </label>
           </div>
 
-          <div class="suggest-line">
-            <span class="field-label">Where?</span>
-            <div class="suggest-where" role="group" aria-label="Where to look">
-              <button type="button" class="chip is-on" data-where="country">Anywhere</button>
-              <button type="button" class="chip" data-where="me">Near me</button>
-              <button type="button" class="chip" data-where="spot">Pick a spot</button>
+          <div class="rec-field">
+            <span class="rec-label" id="where-label">Where</span>
+            <div class="segmented" id="where-seg" role="radiogroup" aria-labelledby="where-label"
+                 style="--count: 3; --index: 0">
+              <span class="segmented-thumb" aria-hidden="true"></span>
+              <button type="button" role="radio" aria-checked="true" data-where="country">Anywhere</button>
+              <button type="button" role="radio" aria-checked="false" data-where="me">Near me</button>
+              <button type="button" role="radio" aria-checked="false" data-where="spot">Pick a spot</button>
             </div>
           </div>
 
-          <div id="suggest-area" hidden>
+          <div class="rec-area" id="suggest-area" hidden>
             <div class="menu-paste-row" id="spot-search" hidden>
               <input type="text" id="spot-address" autocomplete="off" enterkeyhint="search"
-                     placeholder="Street and city — or tap the map">
+                     placeholder="Street and city — or tap the map" aria-label="Address to search around">
               <button type="button" class="btn btn-ghost btn-sm" id="spot-find">Find</button>
             </div>
             <div class="spot-map" id="spot-map" hidden></div>
-            <div class="suggest-line">
-              <span class="field-label" id="radius-label">How far?</span>
-              <label class="chip chip-select">
-                <span class="sr-only">Distance</span>
-                <span class="chip-value" data-for="suggest-radius" aria-hidden="true"></span>
-                <select id="suggest-radius">
-                  <option value="1">1 km</option>
-                  <option value="2">2 km</option>
-                  <option value="5" selected>5 km</option>
-                  <option value="10">10 km</option>
-                  <option value="25">25 km</option>
-                  <option value="50">50 km</option>
-                </select>
-                <svg class="icon chip-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
-              </label>
+            <p class="rec-spot" id="spot-label" aria-live="polite"></p>
+            <div class="rec-field">
+              <span class="rec-label" id="radius-label">How far</span>
+              <div class="segmented segmented-tight" id="radius-seg" role="radiogroup"
+                   aria-labelledby="radius-label" style="--count: 6; --index: 2">
+                <span class="segmented-thumb" aria-hidden="true"></span>
+                <button type="button" role="radio" aria-checked="false" data-radius="1">1 km</button>
+                <button type="button" role="radio" aria-checked="false" data-radius="2">2 km</button>
+                <button type="button" role="radio" aria-checked="true" data-radius="5">5 km</button>
+                <button type="button" role="radio" aria-checked="false" data-radius="10">10 km</button>
+                <button type="button" role="radio" aria-checked="false" data-radius="25">25 km</button>
+                <button type="button" role="radio" aria-checked="false" data-radius="50">50 km</button>
+              </div>
             </div>
-            <p class="field-help" id="spot-label"></p>
           </div>
-        </div>
-        <div class="suggestion" id="suggestion" role="status" hidden></div>
+
+          <button type="button" class="btn btn-primary recommend-go" id="suggest-btn">
+            <svg class="icon" aria-hidden="true"><use href="#i-sparkle"/></svg>
+            <span id="suggest-label">Recommend one</span>
+          </button>
+          <div class="suggestion" id="suggestion" role="status" hidden></div>
+        </section>
         <p class="search-notice" id="search-notice" role="status" hidden></p>
         <ul class="results" id="results" role="listbox" aria-label="Search results"></ul>
         <p class="search-credit" id="search-credit" hidden>Results from Google Maps</p>

@@ -565,44 +565,115 @@ select {
 
 /* ---------- Recommend one ---------- */
 
-/* The whole width, under the search box: it's the other way into the dialog,
-   not a footnote to the search. */
-.suggest-row { margin-top: var(--space-3); }
-.suggest-row .btn {
-  width: 100%; min-height: 46px;
-  border-style: dashed; border-color: var(--color-border-strong);
-  color: var(--color-foreground); font-size: 14.5px;
+/* The other way into the dialog, so it gets a card of its own rather than a
+   link under the search box. The choices are on show, not folded away. */
+.recommend {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  margin-top: var(--space-3); padding: var(--space-3);
+  background: linear-gradient(180deg, var(--color-accent-soft), #FFFAF1 70%);
+  border: 1px solid #EDD7AE; border-radius: var(--radius-lg);
 }
-.suggest-row .btn:hover { border-style: solid; border-color: var(--color-accent); background: var(--color-accent-soft); }
-.suggest-row .icon { color: var(--color-accent); }
+.recommend-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: var(--space-3); }
+.recommend-mark {
+  flex: none; display: grid; place-items: center; width: 36px; height: 36px;
+  border-radius: 50%; background: var(--color-card); color: var(--color-accent);
+  box-shadow: 0 0 0 1px #EDD7AE, var(--shadow-sm);
+}
+.recommend-mark .icon { width: 18px; height: 18px; }
+.recommend-head h3 { margin: 0; font-size: 17px; line-height: 1.3; }
+.recommend-head p { margin: 2px 0 0; font-size: 13.5px; color: var(--color-muted-foreground); }
 
-.suggest-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.suggest-toggle { margin-left: auto; font-size: 13.5px; }
+.rec-field { margin-bottom: 12px; }
+.rec-label {
+  display: block; margin-bottom: 6px;
+  font-size: 11.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: #8A5A0B;
+}
 
-.suggest-panel {
-  margin-top: var(--space-2); padding: var(--space-3);
-  border: 1px solid var(--color-border); border-radius: var(--radius);
-  background: var(--color-muted);
+/* A whole-width select that looks like the switches below it. */
+.rec-select {
+  position: relative; display: flex; align-items: center; gap: 8px;
+  min-height: 44px; padding: 0 40px 0 14px;
+  background: var(--color-card); border: 1px solid #E6D2B5; border-radius: 12px;
+  font-size: 15px; font-weight: 600; cursor: pointer;
+  transition: border-color 150ms ease;
 }
-.suggest-line {
-  display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2);
-  margin-bottom: var(--space-2);
+.rec-select select {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; cursor: pointer; font-size: 16px;
 }
-.suggest-line .field-label { margin: 0; }
-.suggest-line .chip { background: var(--color-card); }
-.suggest-where { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.suggest-where .chip { background: var(--color-card); }
+.rec-select .icon { width: 16px; height: 16px; color: var(--color-accent); }
+.rec-select .chip-value { pointer-events: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-chevron { position: absolute; right: 14px; pointer-events: none; color: var(--color-muted-foreground) !important; }
+.rec-select:focus-within { outline: 2px solid var(--color-ring); outline-offset: 2px; }
+
+/* A switch: one highlight that slides to the choice, so the eye follows the
+   change instead of watching one pill go dark and another light up. */
+.segmented {
+  position: relative; display: grid; grid-template-columns: repeat(var(--count), 1fr);
+  padding: 3px; background: #F1E4CF; border-radius: 12px;
+}
+.segmented-thumb {
+  position: absolute; top: 3px; bottom: 3px; left: 3px;
+  width: calc((100% - 6px) / var(--count));
+  background: var(--color-card); border-radius: 9px;
+  box-shadow: 0 1px 2px rgba(69, 10, 10, .10), 0 1px 1px rgba(69, 10, 10, .04);
+  transform: translateX(calc(var(--index) * 100%));
+  transition: transform 240ms var(--ease-out);
+}
+.segmented button {
+  position: relative; z-index: 1; min-height: 38px; padding: 0 4px;
+  font-family: inherit; font-size: 14px; font-weight: 600; white-space: nowrap;
+  color: var(--color-muted-foreground); background: none; border: 0; border-radius: 9px;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: color 180ms ease, transform 120ms ease-out;
+}
+.segmented button[aria-checked="true"] { color: var(--color-foreground); }
+.segmented button:active { transform: scale(0.96); }
+.segmented button:focus-visible { outline: 2px solid var(--color-ring); outline-offset: -2px; }
+.segmented-tight button { font-size: 13px; }
+
+@media (hover: hover) and (pointer: fine) {
+  .rec-select:hover { border-color: var(--color-accent); }
+  .segmented button:hover { color: var(--color-foreground); }
+}
+
+/* The address and the map arrive with the choice that asked for them. */
+.rec-area {
+  transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out);
+}
+@starting-style {
+  .rec-area { opacity: 0; transform: translateY(-4px); }
+}
+/* Beats the phone rule that stacks paste rows: an address and "Find" fit side by side. */
+.rec-area .menu-paste-row { flex-direction: row; margin-bottom: var(--space-2); }
+.rec-area .menu-paste-row input { background: var(--color-card); border-color: #E6D2B5; border-radius: 12px; }
+.rec-area .menu-paste-row .btn { flex: none; min-height: 44px; border-radius: 12px; background: var(--color-card); }
+.rec-spot { margin: 0 0 12px; font-size: 13px; color: var(--color-muted-foreground); }
+.rec-spot:empty { display: none; }
 .spot-map {
   height: 200px; margin-bottom: var(--space-2);
-  border: 1px solid var(--color-border-strong); border-radius: var(--radius);
+  border: 1px solid #E6D2B5; border-radius: 12px;
   overflow: hidden; position: relative; isolation: isolate;
 }
-#suggest-area .menu-paste-row { margin-bottom: var(--space-2); }
+
+.recommend-go {
+  width: 100%; min-height: 50px; margin-top: 4px; padding: 10px 14px;
+  white-space: normal; text-align: center; line-height: 1.3;
+  box-shadow: 0 1px 2px rgba(153, 27, 27, .25), inset 0 1px 0 rgba(255, 255, 255, .15);
+}
+.recommend-go:active { transform: scale(0.97); }
+.recommend-go[aria-busy="true"] { opacity: .75; cursor: progress; }
+.recommend-go .icon { flex: none; }
 
 .suggestion {
-  margin-top: var(--space-3); padding: var(--space-4);
-  background: var(--color-card); border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+  margin-top: 12px; padding: var(--space-3) var(--space-3) 14px;
+  background: var(--color-card); border: 1px solid #E6D2B5;
+  border-radius: 14px; box-shadow: var(--shadow);
+  transition: opacity 240ms cubic-bezier(0.23, 1, 0.32, 1), transform 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@starting-style {
+  .suggestion { opacity: 0; transform: translateY(6px); }
 }
 .suggestion h3 { font-size: 20px; margin-top: var(--space-1); overflow-wrap: anywhere; }
 .suggestion-head {
@@ -612,9 +683,9 @@ select {
 }
 .suggestion-where {
   margin: var(--space-1) 0 0; font-size: 14px; color: var(--color-muted-foreground);
-  text-transform: capitalize;
 }
 .suggestion-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+.suggestion-actions .btn:active { transform: scale(0.97); }
 .suggestion .menu-message, .suggestion .menu-status, .suggestion .menu-error { margin: 0; }
 
 .share-source {
