@@ -1716,8 +1716,82 @@ select {
    For evenings in dim restaurants: the same warm palette, at night. Maps and
    their pop-ups keep their daylight colours, which is how map apps do it. */
 :root { color-scheme: light dark; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* Dark by choice (Settings > Appearance), or by the phone's own setting when
+   the choice is Automatic. Both use the same values. */
+:root[data-theme="dark"] {
+  --color-primary: #E03A3A;
+  --color-on-primary: #FFFFFF;
+  --color-primary-soft: #3A1716;
+  --color-secondary: #F87171;
+  --color-accent: #E0A84A;
+  --color-on-accent: #1A1208;
+  --color-accent-soft: #2C2112;
+  --color-background: #151010;
+  --color-foreground: #F6EAE4;
+  --color-card: #201817;
+  --color-muted: #2A201E;
+  --color-muted-foreground: #B9A69E;
+  --color-border: #332724;
+  --color-border-strong: #4A3A35;
+  --color-destructive: #F05252;
+  --color-ring: #F05252;
+  --color-success: #4ADE80;
+  --color-success-soft: #12301E;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
+  --shadow: 0 2px 8px rgba(0, 0, 0, .4), 0 1px 2px rgba(0, 0, 0, .3);
+  --shadow-lg: 0 18px 45px rgba(0, 0, 0, .55);
+  --color-primary-hover: #C92A2A;
+  --c-toast-bg: #F6EAE4;
+  --c-toast-fg: #1D1413;
+  --c-danger-text: #F87171;
+  --c-danger-strong: #FCA5A5;
+  --c-success-text: #86EFAC;
+  --c-warm-text: #F0CB8C;
+  --c-warm-label: #E3B566;
+  --c-warm-border: #5C4520;
+  --c-warm-line: #4A3920;
+  --c-warm-field: #4A3A2A;
+  --c-warm-track: #2E241A;
+  --c-warm-glow: #1C1612;
+  --c-fav-1: #3A2A12;
+  --c-fav-2: #2A2014;
+  --c-fav-3: #221A16;
+  --c-fav-border: #6B5220;
+  --c-fav-ring: #4A3A1A;
+  --c-fav-border-hover: #8A6A2A;
+  --c-fav-ring-hover: #5C4822;
+  --c-fav-mark-bg: #4A3714;
+  --c-fav-mark-fg: #F7D48A;
+  --c-fav-review: rgba(255, 255, 255, .05);
+  --c-fav-line: #4A3A1A;
+  --c-star-idle: #8C7A72;
+  --c-star-hover: #E3A94B;
+  --c-star-glow: rgba(245, 158, 11, .12);
+  --c-row-hover: rgba(227, 169, 75, .08);
+  --c-dot-shut: #5A4A44;
+  --c-overlay: rgba(0, 0, 0, .6);
+  --c-header-glass: rgba(21, 16, 16, .9);
+  --c-share-hover: #3A2C14;
+  --c-placeholder: #7A6862;
+  --c-stripes: #2A201E;
+  --c-bottom-glass: rgba(32, 24, 23, .94);
+  --c-picked: #2A1A18;
+  --c-usage-high: #FB923C;
+}
+:root[data-theme="dark"] :is(.leaflet-popup, .gm-style .gm-style-iw-c) {
+  color-scheme: light;
+  --color-foreground: #450A0A; --color-muted-foreground: #6B5750; --color-card: #FFFFFF;
+  --color-muted: #F5EDE6; --color-border: #EFE0D6; --color-border-strong: #E2CDBE;
+  --color-accent: #A16207; --color-success: #15803D; --color-success-soft: #E7F5EC;
+  color: var(--color-foreground);
+}
+:root[data-theme="dark"] img { opacity: .94; }
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --color-primary: #E03A3A;
     --color-on-primary: #FFFFFF;
     --color-primary-soft: #3A1716;
@@ -1777,12 +1851,21 @@ select {
     --c-picked: #2A1A18;
     --c-usage-high: #FB923C;
   }
-  .leaflet-popup, .gm-style .gm-style-iw-c {
+  :root:not([data-theme="light"]) :is(.leaflet-popup, .gm-style .gm-style-iw-c) {
     color-scheme: light;
     --color-foreground: #450A0A; --color-muted-foreground: #6B5750; --color-card: #FFFFFF;
     --color-muted: #F5EDE6; --color-border: #EFE0D6; --color-border-strong: #E2CDBE;
     --color-accent: #A16207; --color-success: #15803D; --color-success-soft: #E7F5EC;
     color: var(--color-foreground);
   }
-  img { opacity: .94; }
+  :root:not([data-theme="light"]) img { opacity: .94; }
 }
+
+/* While the theme changes, nothing runs its own colour transition. */
+.theme-switching *, .theme-switching *::before, .theme-switching *::after { transition: none !important; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 220ms; }
+
+.theme-seg { margin-bottom: var(--space-2); }
+.theme-seg button { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.theme-seg .icon { width: 16px; height: 16px; flex: none; }
+.theme-hint { margin: 0; }

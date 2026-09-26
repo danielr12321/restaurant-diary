@@ -1154,6 +1154,54 @@ function renderGoogleSettings() {
   $("google-remove").hidden = !connected;
 }
 
+/* ---------- appearance ----------
+   Automatic follows the phone; Light and Dark hold regardless. The choice is
+   kept on this device only: two people sharing a diary may well differ. */
+
+const THEME_BARS = { light: "#FDF8F4", dark: "#151010" };
+
+function currentTheme() {
+  const saved = readSetting("theme", "");
+  return saved === "light" || saved === "dark" ? saved : "auto";
+}
+
+function applyTheme(choice) {
+  const root = document.documentElement;
+  if (choice === "light" || choice === "dark") root.dataset.theme = choice;
+  else delete root.dataset.theme;
+  // The phone's own bar above the page takes the same colour.
+  document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+    const own = /dark/.test(meta.getAttribute("media") || "") ? "dark" : "light";
+    meta.setAttribute("content", THEME_BARS[choice === "auto" ? own : choice]);
+  });
+  const dark = choice === "dark" || (choice === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  $("theme-hint").textContent = choice === "auto"
+    ? "Automatic follows your phone or computer — " + (dark ? "dark" : "light") + " right now."
+    : dark ? "Dark, whatever the phone says." : "Light, whatever the phone says.";
+  setSegment($("theme-seg"), "data-theme-choice", choice);
+}
+
+function setTheme(choice) {
+  writeSetting("theme", choice === "auto" ? null : choice);
+  const root = document.documentElement;
+  // Every colour changes in one step, as a single crossfade of the page,
+  // rather than each part fading on its own timing.
+  root.classList.add("theme-switching");
+  const done = () => requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
+  if (document.startViewTransition && !reducedMotion()) {
+    document.startViewTransition(() => applyTheme(choice)).finished.finally(done);
+  } else {
+    applyTheme(choice);
+    done();
+  }
+}
+
+$("theme-seg").addEventListener("click", (event) => {
+  const option = event.target.closest("[data-theme-choice]");
+  if (option && option.dataset.themeChoice !== currentTheme()) setTheme(option.dataset.themeChoice);
+});
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => applyTheme(currentTheme()));
+
 function openSettings() {
   applyGoogleStatus();
   renderGoogleSettings();
@@ -4115,7 +4163,7 @@ $("where-seg").addEventListener("click", (event) => {
   if (option && option.dataset.where !== state.suggest.where) setSuggestWhere(option.dataset.where);
 });
 // Arrow keys move along a switch, as they do in any radio group.
-["where-seg", "radius-seg"].forEach((id) => {
+["where-seg", "radius-seg", "theme-seg"].forEach((id) => {
   $(id).addEventListener("keydown", (event) => {
     const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
     if (!step) return;
@@ -4664,6 +4712,7 @@ if ("serviceWorker" in navigator && !IS_LOCAL) {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 
+applyTheme(currentTheme());
 buildCountryOptions();
 showSearchCountry();
 buildKindOptions();

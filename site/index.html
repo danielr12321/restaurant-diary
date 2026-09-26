@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="color-scheme" content="light dark">
+<script>
+  /* A chosen appearance applies before anything is drawn, so the page never
+     flashes the other one first. "Automatic" leaves it to the phone. */
+  try {
+    var theme = JSON.parse(localStorage.getItem("diary:theme"));
+    if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  } catch (e) { /* no storage: automatic */ }
+</script>
 <meta name="theme-color" content="#FDF8F4" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#151010" media="(prefers-color-scheme: dark)">
 <meta name="description" content="Places to try, and places you've loved. A restaurant diary you can share with a friend.">
@@ -61,6 +69,9 @@
   <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></symbol>
   <symbol id="i-cloud-off" viewBox="0 0 24 24"><path d="m2 2 20 20M5.78 5.78A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.31-.2M21.5 15.2A4.5 4.5 0 0 0 17.5 10h-1.79A7 7 0 0 0 10.2 5.1"/></symbol>
   <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></symbol>
+  <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor"/></symbol>
   <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z"/></symbol>
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></symbol>
@@ -680,6 +691,24 @@
       </button>
     </div>
     <div class="modal-body">
+      <section class="settings-section" aria-labelledby="theme-title">
+        <h3 class="settings-heading" id="theme-title">Appearance</h3>
+        <div class="segmented theme-seg" id="theme-seg" role="radiogroup" aria-labelledby="theme-title"
+             style="--count: 3; --index: 0">
+          <span class="segmented-thumb" aria-hidden="true"></span>
+          <button type="button" role="radio" aria-checked="true" data-theme-choice="auto">
+            <svg class="icon" aria-hidden="true"><use href="#i-auto"/></svg>Automatic
+          </button>
+          <button type="button" role="radio" aria-checked="false" data-theme-choice="light">
+            <svg class="icon" aria-hidden="true"><use href="#i-sun"/></svg>Light
+          </button>
+          <button type="button" role="radio" aria-checked="false" data-theme-choice="dark">
+            <svg class="icon" aria-hidden="true"><use href="#i-moon"/></svg>Dark
+          </button>
+        </div>
+        <p class="hint theme-hint" id="theme-hint">Automatic follows your phone or computer.</p>
+      </section>
+
       <section class="settings-section" aria-labelledby="google-title">
         <h3 class="settings-heading" id="google-title">Google Maps</h3>
         <div class="google-state" id="google-state" role="status" hidden></div>
