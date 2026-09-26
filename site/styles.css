@@ -70,6 +70,7 @@
   --c-fav-border-hover: #DDB25A;
   --c-fav-ring-hover: #EBCF8E;
   --c-fav-mark-bg: #F7DC9E;
+  --c-fav-mark-shine: #FCEFC7;
   --c-fav-mark-fg: #7A4B00;
   --c-fav-review: rgba(255, 255, 255, .7);
   --c-fav-line: #F0DDB0;
@@ -878,9 +879,23 @@ select {
   transition: background-color var(--t-slow) var(--ease), color var(--t-slow) var(--ease),
               border-color var(--t-slow) var(--ease);
 }
-.card.is-favorite .card-mark { background: var(--c-fav-mark-bg); color: var(--c-fav-mark-fg); }
+.card.is-favorite .card-mark {
+  background: linear-gradient(135deg, var(--c-fav-mark-bg) 0%, var(--c-fav-mark-shine) 45%, var(--c-fav-mark-bg) 100%);
+  color: var(--c-fav-mark-fg);
+  position: relative; overflow: hidden;
+}
 .card.is-favorite .card-review { background: var(--c-fav-review); }
 .card.is-favorite .card-actions { border-top-color: var(--c-fav-line); }
+
+/* A slow, occasional glint across the favorite badge and star — gold catching
+   the light, not a loop running for its own sake. */
+.card.is-favorite .card-mark::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, .85) 50%, transparent 65%);
+  transform: translateX(-140%);
+  animation: fav-shine 5.5s ease-in-out infinite;
+  animation-delay: 1.2s;
+}
 
 .fav-btn {
   display: grid; place-items: center; flex: none;
@@ -895,10 +910,22 @@ select {
   .fav-btn:hover { color: var(--c-star-hover); background: var(--c-star-glow); }
 }
 .fav-btn:active { transform: scale(.9); }
-.fav-btn[aria-pressed="true"] { color: #D97706; }
+.fav-btn[aria-pressed="true"] { color: #D97706; position: relative; overflow: hidden; }
 .fav-btn[aria-pressed="true"] .icon { fill: #F59E0B; }
+.fav-btn[aria-pressed="true"]::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: linear-gradient(115deg, transparent 35%, rgba(255, 244, 214, .9) 50%, transparent 65%);
+  transform: translateX(-140%);
+  animation: fav-shine 5.5s ease-in-out infinite;
+  animation-delay: 1.2s;
+  pointer-events: none;
+}
 .fav-btn.pop .icon { animation: fav-pop 260ms var(--ease); }
 @keyframes fav-pop { 0% { transform: scale(.8); } 55% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes fav-shine {
+  0%, 55% { transform: translateX(-140%); }
+  85%, 100% { transform: translateX(140%); }
+}
 
 .card-top {
   display: flex; align-items: flex-start; gap: var(--space-3);
@@ -1592,6 +1619,7 @@ select {
     animation-name: fade-out !important;
   }
   .fav-btn.pop .icon { animation: none !important; }
+  .fav-btn[aria-pressed="true"]::after, .card.is-favorite .card-mark::after { animation: none !important; }
 }
 
 /* ---------- Sending a copy ---------- */
@@ -1784,6 +1812,7 @@ select {
   --c-fav-border-hover: #8A6A2A;
   --c-fav-ring-hover: #5C4822;
   --c-fav-mark-bg: #4A3714;
+  --c-fav-mark-shine: #6B5220;
   --c-fav-mark-fg: #F7D48A;
   --c-fav-review: rgba(255, 255, 255, .05);
   --c-fav-line: #4A3A1A;
@@ -1854,6 +1883,7 @@ select {
     --c-fav-border-hover: #8A6A2A;
     --c-fav-ring-hover: #5C4822;
     --c-fav-mark-bg: #4A3714;
+    --c-fav-mark-shine: #6B5220;
     --c-fav-mark-fg: #F7D48A;
     --c-fav-review: rgba(255, 255, 255, .05);
     --c-fav-line: #4A3A1A;

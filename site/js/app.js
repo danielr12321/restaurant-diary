@@ -614,8 +614,8 @@ function cardMarkup(item) {
 
   html += statusMarkup(item);
   if (openCards.has(item.id)) html += moreMarkup(item);
-  html += cardPhotosMarkup(item);
   html += notesMarkup(item);
+  html += cardPhotosMarkup(item);
   html += actionsMarkup(item);
   return html + "</article>";
 }
@@ -719,8 +719,8 @@ function rowMarkup(item) {
   html += favoriteButtonMarkup(item);
   html += "</div>";
   if (open) {
-    html += '<div class="row-details">' + detailsMarkup(item) + cardPhotosMarkup(item) +
-      notesMarkup(item) + actionsMarkup(item) + "</div>";
+    html += '<div class="row-details">' + detailsMarkup(item) + notesMarkup(item) +
+      cardPhotosMarkup(item) + actionsMarkup(item) + "</div>";
   }
   return html + "</li>";
 }
