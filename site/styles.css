@@ -145,6 +145,9 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; margin: 0; lett
 }
 .btn-icon:hover { background: var(--color-muted); color: var(--color-foreground); }
 .btn-icon.danger:hover { background: var(--color-primary-soft); color: var(--color-destructive); }
+/* The one destructive button in a dialog's footer: set apart, on the other side. */
+.btn-remove { margin-right: auto; border-color: transparent; color: #B91C1C; padding: 0 12px; }
+.btn-remove:hover { background: var(--color-primary-soft); color: #991B1B; }
 
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--color-ring);
@@ -1488,4 +1491,79 @@ select {
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
   }
+}
+
+/* ---------- Sending a copy ---------- */
+
+.share-copy h3 { display: flex; align-items: center; gap: 8px; }
+.share-copy h3 .icon { width: 18px; height: 18px; color: var(--color-accent); }
+
+.send-place {
+  display: flex; align-items: center; gap: 12px; margin-bottom: var(--space-3);
+  padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-card);
+}
+.send-place strong { display: block; font-size: 16px; overflow-wrap: anywhere; }
+.send-place span { font-size: 13.5px; color: var(--color-muted-foreground); }
+.send-place .card-mark { flex: none; }
+
+.send-options { margin: 0 0 var(--space-3); padding: 0; border: 0; }
+.send-options .rec-label { padding: 0; }
+.send-option {
+  display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px;
+  border: 1px solid var(--color-border-strong); border-radius: 12px; background: var(--color-card);
+  font-weight: 600; cursor: pointer; transition: border-color 150ms ease, background-color 150ms ease;
+}
+.send-option + .send-option { margin-top: 8px; }
+.send-option input { width: 18px; height: 18px; margin: 0; accent-color: var(--color-primary); }
+.send-option:has(input:checked) { border-color: var(--color-primary); background: var(--color-primary-soft); }
+.send-count {
+  margin-left: auto; min-width: 28px; padding: 0 8px; border-radius: 999px;
+  background: var(--color-muted); font-size: 13px; line-height: 24px; text-align: center;
+}
+.send-take { margin-top: 0; }
+.send-go { width: 100%; margin-top: var(--space-2); }
+.send-go:active, .send-option:active { transform: scale(0.98); }
+.send-note { margin: var(--space-2) 0 0; text-align: center; font-size: 13px; }
+
+.send-ready {
+  display: flex; gap: 12px; align-items: flex-start; margin-bottom: var(--space-3);
+  padding: 14px; border-radius: var(--radius); background: var(--color-success-soft); color: var(--color-success);
+}
+.send-ready > .icon { flex: none; margin-top: 2px; }
+.send-ready strong { color: var(--color-foreground); }
+.send-ready p { margin: 2px 0 0; font-size: 14px; color: var(--color-muted-foreground); }
+.send-ready {
+  transition: opacity 220ms cubic-bezier(0.23, 1, 0.32, 1), transform 220ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@starting-style { .send-ready { opacity: 0; transform: translateY(4px); } }
+.send-link-row { display: flex; gap: var(--space-2); }
+.send-link {
+  flex: 1; min-width: 0; min-height: 40px; padding: 0 12px;
+  font: inherit; font-size: 14px; color: var(--color-foreground);
+  background: var(--color-muted); border: 1px solid var(--color-border-strong); border-radius: 12px;
+}
+
+/* ---------- A copy someone sent ---------- */
+
+.import-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.import-row {
+  display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px;
+  border: 1px solid var(--color-border-strong); border-radius: 12px; background: var(--color-card);
+  cursor: pointer; transition: border-color 150ms ease, background-color 150ms ease;
+}
+.import-row:has(input:checked) { border-color: var(--color-primary); background: #FFFBFA; }
+.import-row input { flex: none; width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--color-primary); }
+.import-row.is-saved { cursor: default; background: var(--color-muted); border-style: dashed; }
+.import-text { min-width: 0; display: grid; gap: 2px; }
+.import-text strong { font-size: 15.5px; overflow-wrap: anywhere; }
+.import-meta { font-size: 13px; color: var(--color-muted-foreground); }
+.import-take { font-size: 13.5px; color: #713F12; }
+.import-take q { font-style: italic; }
+.import-take .stars-static { vertical-align: -3px; margin-right: 4px; }
+.import-saved { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; color: var(--color-success); }
+.import-saved .icon { width: 14px; height: 14px; }
+.import-details { padding: 10px 2px 0; }
+.import-elsewhere { margin: -4px 0 var(--space-3); }
+@media (hover: hover) and (pointer: fine) {
+  .send-option:hover, .import-row:not(.is-saved):hover { border-color: var(--color-accent); }
 }

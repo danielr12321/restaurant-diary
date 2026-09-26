@@ -7,7 +7,7 @@ import {
 } from "./store.js";
 import {
   cloud, startCloud, syncNow, shareDiary, joinDiary, leaveDiary, refreshUsage,
-  photoPath, photoLinks, findMenuOnline, readSharedLink,
+  photoPath, photoLinks, findMenuOnline, readSharedLink, createShareLink, shareLinkId, readShareLink,
 } from "./cloud.js";
 import {
   googleStatus, saveGoogleKey, deviceUsage, hasRoom, limitMessage, autocomplete, placeDetails,
@@ -592,6 +592,8 @@ function actionsMarkup(item) {
       icon("check") + "I've been here</button>";
   }
   html += '<span class="spacer"></span>';
+  html += '<button type="button" class="btn-icon" data-act="send" data-id="' + esc(item.id) +
+    '" title="Send to a friend" aria-label="Send ' + esc(item.name) + ' to a friend">' + icon("send") + "</button>";
   html += '<button type="button" class="btn-icon" data-act="details" data-id="' + esc(item.id) +
     '" title="Edit details" aria-label="Edit the details of ' + esc(item.name) + '">' + icon("edit") + "</button>";
 
@@ -611,8 +613,7 @@ function actionsMarkup(item) {
       'title="Show on ' + where + '" aria-label="Show ' + esc(item.name) + " on " + where + '">' +
       icon("external") + "</a>";
   }
-  html += '<button type="button" class="btn-icon danger" data-act="delete" data-id="' + esc(item.id) +
-    '" title="Remove" aria-label="Remove ' + esc(item.name) + '">' + icon("trash") + "</button>";
+  // Removing lives in Edit details: rarely wanted, and too easy to hit on a phone.
   return html + "</div>";
 }
 
@@ -1114,6 +1115,7 @@ function renderShare() {
       'spellcheck="false" maxlength="12" placeholder="ABCD1234" enterkeyhint="go" value="' + esc(typed) + '">' +
       '<button type="submit" class="btn btn-ghost"' + (shareBusy ? " disabled" : "") + ">" +
       (shareBusy === "join" ? spinnerMarkup() + "Joining…" : "Join") + "</button></form></div>" +
+      sendCopyCard() +
       (shareError ? '<p class="menu-error" role="alert">' + esc(shareError) + "</p>" : "");
     return;
   }
@@ -1139,9 +1141,20 @@ function renderShare() {
     "and type it.</p>" +
     '<button type="button" class="btn btn-primary share-invite" id="send-invite">' + icon("share") +
     (touch ? "Send an invite" : "Copy an invite message") + "</button>" +
+    sendCopyCard() +
     '<button type="button" class="link-btn share-leave' + (leaveArmed ? " is-armed" : "") + '" id="share-leave">' +
     icon("logout") + (leaveArmed ? "Tap again to stop — you can rejoin with the code"
       : "Stop sharing on this device") + "</button>";
+}
+
+// Sharing a diary means using one together; a copy is for a friend who keeps their own.
+function sendCopyCard() {
+  if (!state.items.length) return "";
+  return '<div class="share-card share-copy"><h3>' + icon("send") + "Send a copy instead</h3>" +
+    "<p>For a friend with a diary of their own: they get a link, pick the places they like and add " +
+    "them to their list. Nothing is shared after that, and your photos stay with you.</p>" +
+    '<button type="button" class="btn btn-ghost" id="send-copy-open">' + icon("send") +
+    "Send a copy of your list</button></div>";
 }
 
 function openShare() {
@@ -1196,6 +1209,412 @@ async function sendInvite() {
   toast(await copyText(text) ? "Invite copied — paste it in a message."
     : "Couldn't copy it. The code is " + code + ".");
 }
+
+/* ---------- sending a copy ----------
+   A restaurant, or a whole list, goes out as a link. Whoever opens it picks
+   what to add to their own diary. Unlike sharing the diary, nothing stays in
+   step afterwards, and photos never leave. */
+
+// What of a restaurant travels: where it is and what it is.
+const COPY_FIELDS = ["name", "local_name", "address", "city", "country", "lat", "lon", "cuisine",
+  "place_type", "opening_hours", "phone", "website", "google_place_id", "google_rating",
+  "google_rating_count", "google_maps_uri", "osm_id", "osm_type", "price"];
+
+function copyOf(item, withTake) {
+  const place = {};
+  COPY_FIELDS.forEach((key) => {
+    if (item[key]) place[key] = item[key];
+  });
+  if (item.chain && Array.isArray(item.branches) && item.branches.length) {
+    place.chain = true;
+    place.branches = item.branches.slice(0, 300);
+  }
+  const menu = item.menu && safeUrl(item.menu.url);
+  if (menu) place.menu_url = menu;
+  if (withTake) {
+    // What the sender makes of it: shown to the friend, and kept as their note.
+    place.take = {
+      visited: item.status === "visited",
+      rating: item.status === "visited" ? item.rating || 0 : 0,
+      review: item.status === "visited" ? item.review || "" : "",
+      dishes: item.status === "visited" && Array.isArray(item.dishes) ? item.dishes : [],
+      note: item.status === "visited" ? "" : item.wish_note || "",
+    };
+  }
+  return place;
+}
+
+const sending = { ids: null, choice: "", busy: false, link: "", error: "", title: "" };
+
+function sendChoices() {
+  const inTab = state.items.filter((item) => item.status === state.tab);
+  const showing = visibleItems();
+  const choices = [
+    { value: "wishlist", label: "Want to go", items: state.items.filter((i) => i.status === "wishlist") },
+    { value: "visited", label: "Been there", items: state.items.filter((i) => i.status === "visited") },
+    { value: "all", label: "Everything", items: state.items },
+  ];
+  // Filtered down to, say, the sushi places: those can go on their own.
+  if (showing.length && showing.length < inTab.length) {
+    choices.unshift({ value: "showing", label: "Just what's showing now", items: showing });
+  }
+  return choices.filter((choice) => choice.items.length);
+}
+
+function openSend(ids) {
+  sending.ids = ids;
+  sending.link = "";
+  sending.error = "";
+  sending.busy = false;
+  const choices = sendChoices();
+  sending.choice = ids ? "" : (choices.find((c) => c.value === state.tab) || choices[0] || {}).value || "";
+  renderSend();
+  openLayer("send-modal", closeSend);
+}
+
+function closeSend() {
+  closeLayer("send-modal");
+}
+
+function sendingItems() {
+  if (sending.ids) return sending.ids.map((id) => store.get(id)).filter(Boolean);
+  const choice = sendChoices().find((c) => c.value === sending.choice);
+  return choice ? choice.items : [];
+}
+
+function renderSend() {
+  const body = $("send-body");
+  const touch = window.matchMedia("(pointer: coarse)").matches && navigator.share;
+  if (sending.link) {
+    body.innerHTML = '<div class="send-ready">' + icon("check") + "<div><strong>The link is ready</strong>" +
+      "<p>Anyone who opens it can add " + esc(sending.title) + " to their own diary.</p></div></div>" +
+      '<div class="send-link-row"><input class="send-link" id="send-link" readonly value="' +
+      esc(sending.link) + '" aria-label="The link">' +
+      '<button type="button" class="btn btn-ghost btn-sm" id="send-copy">' + icon("copy") + "Copy</button></div>" +
+      (touch ? '<button type="button" class="btn btn-primary send-go" id="send-share">' + icon("send") +
+        "Send it</button>" : "");
+    return;
+  }
+  const items = sendingItems();
+  let html = "";
+  if (sending.ids) {
+    const item = items[0];
+    if (!item) {
+      body.innerHTML = '<p class="menu-error">That restaurant is gone from the diary.</p>';
+      return;
+    }
+    html += '<div class="send-place">' + '<div class="card-mark" aria-hidden="true">' +
+      esc((item.name || "?").trim().charAt(0).toUpperCase()) + "</div><div><strong>" + esc(item.name) +
+      "</strong><span>" + esc([typesOf(item)[0], item.city].filter(Boolean).join(" · ")) +
+      "</span></div></div>";
+  } else {
+    html += '<fieldset class="send-options"><legend class="rec-label">What to send</legend>' +
+      sendChoices().map((choice) => '<label class="send-option">' +
+        '<input type="radio" name="send-choice" value="' + esc(choice.value) + '"' +
+        (choice.value === sending.choice ? " checked" : "") + ">" +
+        "<span>" + esc(choice.label) + "</span>" +
+        '<span class="send-count">' + choice.items.length + "</span></label>").join("") + "</fieldset>";
+  }
+  const anyVisited = items.some((item) => item.status === "visited");
+  html += '<label class="chain-option send-take"><input type="checkbox" id="send-take" checked>' +
+    '<span class="chain-text"><strong>Include my ' + (anyVisited ? "ratings and notes" : "notes") + "</strong>" +
+    '<span class="field-help">So they know why it’s worth going.</span></span></label>' +
+    '<div class="field"><label class="field-label" for="send-from">Your name ' +
+    '<span class="optional">(so they know who it’s from)</span></label>' +
+    '<input type="text" id="send-from" maxlength="60" autocomplete="off" value="' +
+    esc(readSetting("my-name", "")) + '"></div>' +
+    (sending.error ? '<p class="menu-error" role="alert">' + esc(sending.error) + "</p>" : "") +
+    '<button type="submit" class="btn btn-primary send-go" id="send-make"' + (sending.busy ? " disabled" : "") + ">" +
+    (sending.busy ? spinnerMarkup() + "Making the link…" : icon("send") + (touch ? "Send the link" : "Copy the link")) +
+    "</button>" +
+    '<p class="hint send-note">Photos don’t go with it, and nothing stays linked to your diary.</p>';
+  body.innerHTML = html;
+}
+
+async function makeSendLink() {
+  const items = sendingItems();
+  if (!items.length || sending.busy) return;
+  const withTake = $("send-take").checked;
+  const sender = $("send-from").value.trim();
+  writeSetting("my-name", sender || null);
+  sending.title = items.length === 1 ? items[0].name : items.length + " restaurants";
+  sending.busy = true;
+  sending.error = "";
+  renderSend();
+  try {
+    sending.link = await createShareLink({
+      kind: sending.ids ? "place" : "list",
+      title: sending.title,
+      sender,
+      places: items.map((item) => copyOf(item, withTake)),
+    });
+  } catch (err) {
+    sending.error = err.message;
+  }
+  sending.busy = false;
+  renderSend();
+  if (sending.link) await deliverLink();
+}
+
+function sendMessage() {
+  return (sending.ids ? sending.title + " — worth a try! Add it to your restaurant diary:"
+    : sending.title + " from my restaurant diary — pick the ones you like:") + "\n" + sending.link;
+}
+
+// The phone's own share sheet where there is one; otherwise, the clipboard.
+async function deliverLink() {
+  const touch = window.matchMedia("(pointer: coarse)").matches && navigator.share;
+  if (touch) {
+    try {
+      await navigator.share({ title: sending.title, text: sendMessage() });
+      return;
+    } catch (err) {
+      // Cancelled, or the phone wants a fresh tap: the "Send it" button is right there.
+      return;
+    }
+  }
+  toast(await copyText(sendMessage()) ? "Link copied — paste it in a message."
+    : "Couldn't copy it on its own — use the Copy button.");
+}
+
+$("send-body").addEventListener("submit", (event) => {
+  event.preventDefault();
+  makeSendLink();
+});
+$("send-body").addEventListener("change", (event) => {
+  if (event.target.name !== "send-choice") return;
+  sending.choice = event.target.value;
+  const take = $("send-take").checked;
+  const from = $("send-from").value;
+  renderSend();
+  $("send-take").checked = take;
+  $("send-from").value = from;
+});
+$("send-body").addEventListener("click", async (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  if (button.id === "send-copy") {
+    toast(await copyText(sending.link) ? "Link copied." : "Select the link and copy it.");
+    if ($("send-link")) $("send-link").select();
+  } else if (button.id === "send-share") {
+    deliverLink();
+  }
+});
+$("close-send").addEventListener("click", closeSend);
+
+/* ---------- a copy someone sent ---------- */
+
+const incoming = { id: "", loading: false, error: "", sender: "", places: [], picked: new Set() };
+
+// A link can hold anything, so only what a restaurant is made of is kept, in the shapes the diary uses.
+function cleanCopy(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const text = (value, max) => (typeof value === "string" ? value
+    : typeof value === "number" && isFinite(value) ? String(value) : "").slice(0, max || 300);
+  const number = (value) => (isFinite(Number(value)) ? Number(value) : 0);
+  const coordinate = (value) => (isFinite(parseFloat(value)) ? String(parseFloat(value)) : "");
+  const place = {
+    name: text(raw.name, 200).trim(),
+    local_name: text(raw.local_name, 200),
+    address: text(raw.address),
+    city: text(raw.city, 120),
+    country: text(raw.country, 80),
+    lat: coordinate(raw.lat),
+    lon: coordinate(raw.lon),
+    cuisine: text(raw.cuisine, 120),
+    place_type: text(raw.place_type, 80),
+    opening_hours: text(raw.opening_hours, 600),
+    phone: text(raw.phone, 40),
+    website: safeUrl(raw.website) || "",
+    google_place_id: text(raw.google_place_id, 200),
+    google_rating: Math.min(5, Math.max(0, number(raw.google_rating))),
+    google_rating_count: Math.max(0, Math.round(number(raw.google_rating_count))),
+    google_maps_uri: safeUrl(raw.google_maps_uri) || "",
+    osm_id: raw.osm_id ? text(raw.osm_id, 30) : null,
+    osm_type: raw.osm_type ? text(raw.osm_type, 10) : null,
+    price: Math.min(5, Math.max(0, Math.round(number(raw.price)))),
+  };
+  if (!place.name) return null;
+  if (raw.chain && Array.isArray(raw.branches)) {
+    const branches = raw.branches.slice(0, 300).filter((b) => b && typeof b === "object").map((b) => ({
+      name: text(b.name, 200), address: text(b.address), city: text(b.city, 120),
+      lat: coordinate(b.lat), lon: coordinate(b.lon), opening_hours: text(b.opening_hours, 600),
+      phone: text(b.phone, 40), osm_id: b.osm_id ? text(b.osm_id, 30) : null,
+      osm_type: b.osm_type ? text(b.osm_type, 10) : null, google_place_id: text(b.google_place_id, 200),
+    }));
+    if (branches.length) {
+      place.chain = true;
+      place.branches = branches;
+    }
+  }
+  const menu = safeUrl(raw.menu_url);
+  if (menu) place.menu = { url: menu };
+  const take = raw.take && typeof raw.take === "object" ? raw.take : null;
+  if (take) {
+    place.take = {
+      visited: !!take.visited,
+      rating: Math.min(5, Math.max(0, Math.round(number(take.rating)))),
+      review: text(take.review, 2000).trim(),
+      dishes: (Array.isArray(take.dishes) ? take.dishes : []).slice(0, 30).map((d) => text(d, 80).trim())
+        .filter(Boolean),
+      note: text(take.note, 1000).trim(),
+    };
+  }
+  return place;
+}
+
+/** The sender's view of a place, as one line for the friend's note. */
+function takeNote(take, sender) {
+  if (!take) return "";
+  const parts = [];
+  if (take.rating) parts.push("★" + take.rating + "/5");
+  if (take.review) parts.push("“" + take.review + "”");
+  if (take.dishes.length) parts.push("Try: " + take.dishes.join(", "));
+  if (take.note) parts.push(take.note);
+  if (!parts.length) return take.visited ? "Recommended by " + (sender || "a friend") + "." : "";
+  return "From " + (sender || "a friend") + ": " + parts.join(" · ");
+}
+
+async function openImport(id) {
+  Object.assign(incoming, { id, loading: true, error: "", sender: "", places: [], picked: new Set() });
+  renderImport();
+  openLayer("import-modal", closeImport);
+  try {
+    const data = await readShareLink(id);
+    incoming.sender = String(data.sender || "").slice(0, 60);
+    incoming.places = data.places.map(cleanCopy).filter(Boolean);
+    if (!incoming.places.length) throw new Error("This link holds no restaurants.");
+    // Everything is ticked, except what's in this diary already.
+    incoming.places.forEach((place, index) => {
+      if (!findDuplicates(place).length) incoming.picked.add(index);
+    });
+  } catch (err) {
+    incoming.error = err.message;
+  }
+  incoming.loading = false;
+  renderImport();
+}
+
+function closeImport() {
+  closeLayer("import-modal");
+}
+
+function takeMarkup(take) {
+  if (!take) return "";
+  const bits = [];
+  if (take.visited) bits.push(take.rating ? starsStatic(take.rating) : "Has been");
+  if (take.review) bits.push("<q>" + esc(take.review.length > 140 ? take.review.slice(0, 140) + "…" : take.review) + "</q>");
+  if (take.dishes.length) bits.push("Try: " + esc(take.dishes.slice(0, 4).join(", ")));
+  if (take.note) bits.push(esc(take.note.length > 140 ? take.note.slice(0, 140) + "…" : take.note));
+  return bits.length ? '<span class="import-take">' + bits.join(" ") + "</span>" : "";
+}
+
+function renderImport() {
+  const body = $("import-body");
+  const foot = $("import-foot");
+  foot.hidden = true;
+  if (incoming.loading) {
+    $("import-title").textContent = "Shared with you";
+    body.innerHTML = '<p class="menu-status">' + spinnerMarkup() + "Opening what was sent…</p>";
+    return;
+  }
+  if (incoming.error) {
+    body.innerHTML = '<p class="menu-error" role="alert">' + esc(incoming.error) + "</p>";
+    return;
+  }
+  const places = incoming.places;
+  const single = places.length === 1;
+  const who = incoming.sender ? esc(incoming.sender) : "A friend";
+  $("import-title").textContent = single ? "A restaurant for you" : places.length + " restaurants for you";
+  const addable = places.filter((place) => !findDuplicates(place).length).length;
+  let html = '<p class="hint">' + who + " sent " + (single ? "this" : "these") + " from their restaurant diary. " +
+    (!addable ? (single ? "It's in your diary already." : "They're all in your diary already.")
+      : single ? "Add it to your wishlist?" : "Tick the ones to add to your wishlist.") + "</p>";
+  // On an iPhone, the home-screen app keeps its own diary, apart from Safari's.
+  if (!state.items.length && !cloud.diary) {
+    html += '<p class="field-help import-elsewhere">Keep your diary in the app on your home screen? ' +
+      'Copy this link and paste it into the app’s <strong>Add</strong> search instead. ' +
+      '<button type="button" class="link-btn" id="import-copy-link">Copy the link</button></p>';
+  }
+  html += '<ul class="import-list">' + places.map((place, index) => {
+    const saved = findDuplicates(place)[0];
+    const meta = [typesOf(place)[0], place.city,
+      place.chain && place.branches ? place.branches.length + " branches" : ""].filter(Boolean).join(" · ");
+    return '<li><label class="import-row' + (saved ? " is-saved" : "") + '">' +
+      '<input type="checkbox" data-index="' + index + '"' + (incoming.picked.has(index) ? " checked" : "") +
+      (saved ? " disabled" : "") + ">" +
+      '<span class="import-text"><strong>' + esc(place.name) + "</strong>" +
+      (meta ? '<span class="import-meta">' + esc(meta) + "</span>" : "") +
+      takeMarkup(place.take) +
+      (saved ? '<span class="import-saved">' + icon("check") + "Already in " + esc(listName(saved)) + "</span>" : "") +
+      "</span></label>" +
+      (single && !saved ? '<div class="card-meta import-details">' + metaMarkup(place, true) + "</div>" : "") +
+      "</li>";
+  }).join("") + "</ul>";
+  body.innerHTML = html;
+  showImportFoot();
+}
+
+function showImportFoot() {
+  const addable = incoming.places.filter((place) => !findDuplicates(place).length).length;
+  const count = incoming.picked.size;
+  $("import-foot").hidden = !addable;
+  $("import-toggle").hidden = addable < 2;
+  $("import-toggle").textContent = count === addable ? "Select none" : "Select all";
+  $("import-go").disabled = !count;
+  $("import-go").textContent = count <= 1 && incoming.places.length === 1 ? "Add to my wishlist"
+    : "Add " + count + " to my wishlist";
+}
+
+function importPicked() {
+  const picked = [...incoming.picked].sort((a, b) => a - b).map((i) => incoming.places[i]);
+  if (!picked.length) return;
+  picked.forEach((place) => {
+    const { take, ...facts } = place;
+    const item = {
+      ...facts,
+      id: newId(),
+      status: "wishlist",
+      source: place.google_place_id ? "google" : place.osm_id ? "osm" : "manual",
+      added_at: nowIso(),
+      wish_note: takeNote(take, incoming.sender),
+      dishes: [],
+      photos: [],
+    };
+    if (item.chain) item.branches_at = nowIso();
+    saveItem(item);
+  });
+  closeImport();
+  state.tab = "wishlist";
+  syncTabs();
+  render(true);
+  toast(picked.length === 1 ? picked[0].name + " is on your wishlist."
+    : picked.length + " restaurants added to your wishlist.");
+}
+
+$("import-body").addEventListener("change", (event) => {
+  const box = event.target.closest("input[data-index]");
+  if (!box) return;
+  const index = Number(box.dataset.index);
+  if (box.checked) incoming.picked.add(index);
+  else incoming.picked.delete(index);
+  showImportFoot();
+});
+$("import-body").addEventListener("click", async (event) => {
+  if (!event.target.closest("#import-copy-link")) return;
+  toast(await copyText(SITE_URL + "?list=" + incoming.id) ? "Link copied." : "Couldn't copy the link.");
+});
+$("import-toggle").addEventListener("click", () => {
+  const addable = incoming.places.map((place, i) => (findDuplicates(place).length ? -1 : i)).filter((i) => i >= 0);
+  const all = incoming.picked.size === addable.length;
+  incoming.picked = new Set(all ? [] : addable);
+  $("import-body").querySelectorAll("input[data-index]").forEach((box) => {
+    box.checked = incoming.picked.has(Number(box.dataset.index));
+  });
+  showImportFoot();
+});
+$("import-go").addEventListener("click", importPicked);
+$("close-import").addEventListener("click", closeImport);
 
 /* ---------- dialogs and the Back button ----------
    Every open dialog takes a step in the browser history, so the phone's Back
@@ -2838,6 +3257,13 @@ function closeDetails() {
   detailsId = null;
 }
 
+$("remove-details").addEventListener("click", () => {
+  const id = detailsId;
+  if (!id) return;
+  removeItem(id);
+  if (!store.get(id)) closeDetails();
+});
+
 function detailsError(message, focusId) {
   $("d-error").textContent = message;
   $("d-error").hidden = false;
@@ -3304,6 +3730,13 @@ $("branch-check").addEventListener("change", showBranchChoice);
 
 $("place-search").addEventListener("input", (event) => {
   const query = event.target.value.trim();
+  const copyId = shareLinkId(query);
+  if (copyId && /^https?:\/\//i.test(query)) {
+    event.target.value = "";
+    closeAdd();
+    openImport(copyId);
+    return;
+  }
   showRecommend();
   clearTimeout(searchTimer);
   if (query.length < 3) {
@@ -3375,6 +3808,9 @@ $("share-body").addEventListener("click", async (event) => {
     toast(await copyText(cloud.diary.invite_code) ? "Code copied." : "Couldn't copy — the code is on screen.");
   } else if (button.id === "send-invite") {
     sendInvite();
+  } else if (button.id === "send-copy-open") {
+    closeShare();
+    openSend(null);
   } else if (button.id === "share-leave") {
     if (!leaveArmed) {
       leaveArmed = true;
@@ -3566,6 +4002,7 @@ $("list").addEventListener("click", (event) => {
   else if (action === "details") openDetails(trigger.dataset.id);
   else if (action === "branches") openBranches(trigger.dataset.id);
   else if (action === "merge") mergeChain(trigger.dataset.id);
+  else if (action === "send") openSend([trigger.dataset.id]);
   else if (action === "apart") keepApart(trigger.dataset.id);
   else if (action === "expand") toggleRow(trigger.dataset.id);
 });
@@ -3882,5 +4319,12 @@ setView(state.view);
 render(true);
 startCloud().catch((err) => console.warn("Sharing unavailable:", err));
 
-const sharedLink = sharedFromAddress();
-if (sharedLink) startFromShare(sharedLink);
+const copyInAddress = shareLinkId(location.search);
+if (copyInAddress) {
+  history.replaceState({}, "", location.pathname);
+  openImport(copyInAddress);
+} else {
+  const sharedLink = sharedFromAddress();
+  if (sharedLink && shareLinkId(sharedLink)) openImport(shareLinkId(sharedLink));
+  else if (sharedLink) startFromShare(sharedLink);
+}

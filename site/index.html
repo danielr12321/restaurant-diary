@@ -59,6 +59,7 @@
   <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></symbol>
   <symbol id="i-cloud-off" viewBox="0 0 24 24"><path d="m2 2 20 20M5.78 5.78A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.31-.2M21.5 15.2A4.5 4.5 0 0 0 17.5 10h-1.79A7 7 0 0 0 10.2 5.1"/></symbol>
   <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z"/></symbol>
   <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></symbol>
   <symbol id="i-smartphone" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></symbol>
   <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M10 3.5 12 8.5 17 10.5 12 12.5 10 17.5 8 12.5 3 10.5 8 8.5Z"/><path d="M18 3.5 18.8 5.7 21 6.5 18.8 7.3 18 9.5 17.2 7.3 15 6.5 17.2 5.7Z"/><path d="M17.5 15 18.2 16.8 20 17.5 18.2 18.2 17.5 20 16.8 18.2 15 17.5 16.8 16.8Z"/></symbol>
@@ -574,6 +575,9 @@
       <p class="menu-error" id="d-error" role="alert" hidden></p>
     </div>
     <div class="modal-foot">
+      <button type="button" class="btn btn-ghost btn-remove" id="remove-details">
+        <svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>Remove
+      </button>
       <button type="button" class="btn btn-ghost" id="cancel-details">Cancel</button>
       <button type="submit" class="btn btn-primary" id="save-details">Save</button>
     </div>
@@ -632,6 +636,36 @@
       </button>
     </div>
     <div class="modal-body" id="share-body"></div>
+  </div>
+</div>
+
+<!-- Send a copy: a restaurant or a list, as a link -->
+<div class="modal-backdrop" id="send-modal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="send-title">
+    <div class="modal-head">
+      <h2 id="send-title">Send a copy</h2>
+      <button type="button" class="btn-icon" id="close-send" aria-label="Close">
+        <svg class="icon"><use href="#i-x"/></svg>
+      </button>
+    </div>
+    <form class="modal-body" id="send-body" autocomplete="off"></form>
+  </div>
+</div>
+
+<!-- A copy someone sent: pick what to add -->
+<div class="modal-backdrop" id="import-modal" hidden>
+  <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="import-title">
+    <div class="modal-head">
+      <h2 id="import-title">Shared with you</h2>
+      <button type="button" class="btn-icon" id="close-import" aria-label="Close">
+        <svg class="icon"><use href="#i-x"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="import-body"></div>
+    <div class="modal-foot" id="import-foot" hidden>
+      <button type="button" class="btn btn-ghost" id="import-toggle">Select none</button>
+      <button type="button" class="btn btn-primary" id="import-go">Add to my wishlist</button>
+    </div>
   </div>
 </div>
 

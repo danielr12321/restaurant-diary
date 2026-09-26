@@ -6,7 +6,7 @@
    pushed; other devices' changes arrive live, or on the next pull. Per
    restaurant, the most recent edit wins. */
 
-import { SUPABASE_URL, SUPABASE_KEY, MENU_FUNCTION_URL, MENU_FUNCTION_IS_LOCAL } from "./config.js";
+import { SITE_URL, SUPABASE_URL, SUPABASE_KEY, MENU_FUNCTION_URL, MENU_FUNCTION_IS_LOCAL } from "./config.js";
 import {
   store, applyRemote, clearOutbox, queueEverything, getPhoto, photoSent, readSetting, writeSetting,
 } from "./store.js";
@@ -526,4 +526,42 @@ export async function readSharedLink(link) {
   }
   if (!data.link) throw new Error(data.error || "That link couldn't be read.");
   return data.link;
+}
+
+/* ---------- a copy sent as a link ----------
+   Unlike a shared diary, a copy doesn't keep anyone in step: it's a snapshot of
+   some restaurants that the person opening the link can add to their own diary. */
+
+/** Stores the snapshot and gives back the link to send. */
+export async function createShareLink({ kind, title, sender, places }) {
+  const sb = supabase();
+  await ensureSession();
+  const { data, error } = await sb.rpc("create_share", {
+    what: kind, title: title || "", sender: sender || "", places: clean(places),
+  });
+  if (error) {
+    if (/too many shared links/i.test(error.message || "")) {
+      throw new Error("That's a lot of links for one day — try again tomorrow.");
+    }
+    throw friendly(error);
+  }
+  return SITE_URL + "?list=" + encodeURIComponent(data);
+}
+
+/** The id in a link to a shared copy, or "" when it isn't one. */
+export function shareLinkId(text) {
+  const found = String(text || "").match(/[?&]list=([0-9a-f]{8,32})\b/i);
+  return found ? found[1].toLowerCase() : "";
+}
+
+/** What a shared link holds: { kind, title, sender, places }. */
+export async function readShareLink(id) {
+  const sb = supabase();
+  if (!sb) throw new Error("The sharing library didn't load. Check your internet connection and reload.");
+  const { data, error } = await sb.rpc("get_share", { token: id });
+  if (error) throw friendly(error);
+  if (!data || !Array.isArray(data.places)) {
+    throw new Error("This link doesn't lead to a list — it may have been copied only in part.");
+  }
+  return data;
 }

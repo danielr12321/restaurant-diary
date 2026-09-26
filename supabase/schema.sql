@@ -249,3 +249,53 @@ create policy diary_photos_update on storage.objects for update to authenticated
 drop policy if exists diary_photos_delete on storage.objects;
 create policy diary_photos_delete on storage.objects for delete to authenticated
   using (bucket_id = 'diary-photos' and public.is_diary_member(((storage.foldername(name))[1])::uuid));
+
+-- A copy of some restaurants, sent as a link. Whoever opens the link can add
+-- them to their own diary; nothing ties it back to the sender's diary, and it
+-- carries no photos. The table has no policies: it's reached only through the
+-- two functions below, by the link's unguessable id.
+create table if not exists public.diary_shares (
+  id text primary key,
+  created_by uuid not null references auth.users (id) on delete cascade,
+  kind text not null check (kind in ('place', 'list')),
+  title text not null default '',
+  sender text not null default '',
+  places jsonb not null check (jsonb_typeof(places) = 'array'),
+  created_at timestamptz not null default now()
+);
+
+alter table public.diary_shares enable row level security;
+
+create or replace function public.create_share(what text, title text, sender text, places jsonb)
+returns text language plpgsql security definer set search_path = public as $$
+declare token text; recent integer;
+begin
+  if auth.uid() is null then raise exception 'not signed in' using errcode = '42501'; end if;
+  if what not in ('place', 'list') or jsonb_typeof(places) <> 'array'
+     or jsonb_array_length(places) = 0 or jsonb_array_length(places) > 500
+     or octet_length(places::text) > 1000000 then
+    raise exception 'invalid share' using errcode = '22023';
+  end if;
+  select count(*) into recent from public.diary_shares
+    where created_by = auth.uid() and created_at > now() - interval '1 day';
+  if recent >= 100 then raise exception 'too many shared links today' using errcode = '54000'; end if;
+  -- 16 hex characters from a random UUID: short enough for a message, far too many to guess.
+  token := substr(replace(gen_random_uuid()::text, '-', ''), 1, 12) ||
+           substr(replace(gen_random_uuid()::text, '-', ''), 17, 4);
+  insert into public.diary_shares (id, created_by, kind, title, sender, places)
+    values (token, auth.uid(), what, left(coalesce(title, ''), 120), left(coalesce(sender, ''), 60), places);
+  return token;
+end;
+$$;
+
+create or replace function public.get_share(token text)
+returns jsonb language sql security definer stable set search_path = public as $$
+  select jsonb_build_object('kind', kind, 'title', title, 'sender', sender, 'places', places,
+                            'created_at', created_at)
+    from public.diary_shares where id = token;
+$$;
+
+revoke execute on function public.create_share(text, text, text, jsonb) from public, anon;
+revoke execute on function public.get_share(text) from public;
+grant execute on function public.create_share(text, text, text, jsonb) to authenticated;
+grant execute on function public.get_share(text) to anon, authenticated;
