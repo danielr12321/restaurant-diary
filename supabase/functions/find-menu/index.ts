@@ -16,6 +16,9 @@
 const USER_AGENT = "Mozilla/5.0 (compatible; RestaurantDiary/1.0; personal use)";
 // Sites that turn away servers often still answer the crawler that fetches link previews.
 const CRAWLER_AGENT = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)";
+// Some sites turn away anything that doesn't look like a browser; they get one retry as one.
+const BROWSER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
+  "Chrome/126.0 Safari/537.36";
 const TIMEOUT_MS = 10_000;
 const TIME_BUDGET_MS = 30_000; // for one whole search, however many pages it opens
 const MAX_BYTES = 3 * 1024 * 1024;
@@ -218,6 +221,9 @@ async function fetchPage(url: string, ctx: Context, agent = USER_AGENT): Promise
     }
     if (!response.ok) {
       await response.body?.cancel().catch(() => {});
+      if ([403, 406, 429, 503].includes(response.status) && agent !== BROWSER_AGENT) {
+        return fetchPage(current, ctx, BROWSER_AGENT);
+      }
       throw new MenuError("The website answered with an error (" + response.status + ").");
     }
     let body: Uint8Array;
