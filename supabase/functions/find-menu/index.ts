@@ -24,7 +24,7 @@ const TIME_BUDGET_MS = 30_000; // for one whole search, however many pages it op
 const MAX_BYTES = 3 * 1024 * 1024;
 const MAX_ITEMS = 150;
 // Saved with each result, so menus found by an older, weaker search get re-checked.
-export const FINDER_VERSION = 3;
+export const FINDER_VERSION = 4;
 
 const MENU_WORDS = ["menu", "תפריט", "carte", "speisekarte", "menù", "carta"];
 const FOOD_WORDS = ["food", "dishes", "אוכל", "מנות", "our kitchen"];
@@ -956,18 +956,18 @@ async function searchHomepage(website: string, result: Result, ctx: Context): Pr
   }
   if (links.length && await tryPages(links, result, ctx)) return;
 
-  // Many restaurants keep the menu on their Ontopo booking page and link only
-  // that ("Book a table"): it has the dishes, where their own site may not.
+  // Many restaurants link straight to a booking or ordering platform (Ontopo,
+  // Wolt, Beecomm...) from a button with no menu-ish label at all — an icon, or
+  // "Order now" — so rankLinks above never sees it as menu-shaped. Look for one
+  // of those hosts directly, by link, not by wording.
   if (Date.now() < ctx.deadline) {
-    const booking = absoluteLinks(homepage, finalUrl).map(([url]) => url)
-      .find((url) => hostMatches(hostOf(url), ONTOPO));
-    if (booking) {
+    const platformLink = absoluteLinks(homepage, finalUrl)
+      .map(([url]) => url)
+      .find((url) => platformOf(url)?.[1]);
+    if (platformLink) {
       try {
-        const read = await readMenuPage(booking, ctx);
-        if (read.items.length) {
-          Object.assign(result, { url: read.finalUrl, items: dedupe(read.items), kind: "page", platform: "Ontopo page" });
-          return;
-        }
+        await usePlatform(result, platformLink, platformOf(platformLink)!, ctx);
+        if (result.url || result.kind === "profile") return;
       } catch (err) {
         if (!(err instanceof MenuError)) throw err;
       }
