@@ -363,6 +363,10 @@ select {
   .shekel-btn:hover { transform: scale(1.08); }
 }
 .shekel-btn.on { color: var(--color-accent); }
+.shekels.is-readonly .shekel-btn { cursor: default; }
+@media (hover: hover) and (pointer: fine) {
+  .shekels.is-readonly .shekel-btn:hover { transform: none; }
+}
 
 /* ---------- Near me ---------- */
 

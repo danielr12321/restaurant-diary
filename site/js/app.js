@@ -3105,14 +3105,16 @@ function showConfirm(place) {
   }
 
   state.draftPrice = place.price || 0;
-  $("price-help").textContent = manual
-    ? "Optional — tap again to clear."
-    : place.price
-      ? "Filled in from " + sourceName + " — change it if that looks wrong."
-      : "Optional — " + sourceName + " has no price for this one. Tap again to clear.";
+  $("price-help").textContent = place.google_place_id
+    ? (place.price ? "Set automatically from Google Maps." : "Google Maps has no price for this one yet.")
+    : manual
+      ? "Optional — tap again to clear."
+      : place.price
+        ? "Filled in from " + sourceName + " — change it if that looks wrong."
+        : "Optional — " + sourceName + " has no price for this one. Tap again to clear.";
 
   buildStars("rating-input", "draftRating");
-  buildShekels("price-input", "draftPrice");
+  buildShekels("price-input", "draftPrice", !!place.google_place_id);
 }
 
 function buildPicker(containerId, stateKey, kind) {
@@ -3145,8 +3147,21 @@ function buildStars(containerId, stateKey) {
   buildPicker(containerId, stateKey, "star");
 }
 
-function buildShekels(containerId, stateKey) {
-  buildPicker(containerId, stateKey, "shekel");
+// Google knows a place's price level better than a guess ever could, so once
+// a restaurant is linked to Google that field just displays its answer.
+function buildShekels(containerId, stateKey, fromGoogle) {
+  const container = $(containerId);
+  container.classList.toggle("is-readonly", !!fromGoogle);
+  if (!fromGoogle) {
+    buildPicker(containerId, stateKey, "shekel");
+    return;
+  }
+  container.onclick = null;
+  const price = state[stateKey];
+  container.innerHTML = "";
+  for (let i = 1; i <= 5; i += 1) {
+    container.innerHTML += '<span class="shekel-btn' + (i <= price ? " on" : "") + '" aria-hidden="true">₪</span>';
+  }
 }
 
 async function savePlace() {
@@ -3250,8 +3265,11 @@ function openReview(id) {
   $("review-for").innerHTML = "<strong>" + esc(item.name) + "</strong>";
   $("edit-dishes").value = (item.dishes || []).join(", ");
   $("edit-review").value = item.review || "";
+  $("edit-price-help").textContent = item.google_place_id
+    ? "Set automatically from Google Maps."
+    : "Tap again to clear.";
   buildStars("edit-rating", "editRating");
-  buildShekels("edit-price", "editPrice");
+  buildShekels("edit-price", "editPrice", !!item.google_place_id);
   renderEditPhotos();
   reviewSnapshot = reviewValues();
 
@@ -3352,7 +3370,10 @@ function openDetails(id) {
   document.querySelector('input[name="d-status"][value="' + status + '"]').checked = true;
   $("d-note-field").hidden = status === "visited";
   state.detailsPrice = item.price || 0;
-  buildShekels("d-price", "detailsPrice");
+  $("d-price-help").textContent = item.google_place_id
+    ? "Set automatically from Google Maps."
+    : "Tap again to clear.";
+  buildShekels("d-price", "detailsPrice", !!item.google_place_id);
   $("d-error").hidden = true;
   showHoursPreview();
   detailsSnapshot = detailsValues();
