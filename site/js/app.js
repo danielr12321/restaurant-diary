@@ -3106,7 +3106,7 @@ function showConfirm(place) {
 
   state.draftPrice = place.price || 0;
   $("price-help").textContent = place.google_place_id
-    ? (place.price ? "Set automatically from Google Maps." : "Google Maps has no price for this one yet.")
+    ? (place.price ? "Set automatically from Google Maps." : "Google Maps has no price for this one — choose it yourself.")
     : manual
       ? "Optional — tap again to clear."
       : place.price
@@ -3114,7 +3114,7 @@ function showConfirm(place) {
         : "Optional — " + sourceName + " has no price for this one. Tap again to clear.";
 
   buildStars("rating-input", "draftRating");
-  buildShekels("price-input", "draftPrice", !!place.google_place_id);
+  buildShekels("price-input", "draftPrice", !!(place.google_place_id && place.price));
 }
 
 function buildPicker(containerId, stateKey, kind) {
@@ -3265,11 +3265,11 @@ function openReview(id) {
   $("review-for").innerHTML = "<strong>" + esc(item.name) + "</strong>";
   $("edit-dishes").value = (item.dishes || []).join(", ");
   $("edit-review").value = item.review || "";
-  $("edit-price-help").textContent = item.google_place_id
+  $("edit-price-help").textContent = item.google_place_id && item.price
     ? "Set automatically from Google Maps."
     : "Tap again to clear.";
   buildStars("edit-rating", "editRating");
-  buildShekels("edit-price", "editPrice", !!item.google_place_id);
+  buildShekels("edit-price", "editPrice", !!(item.google_place_id && item.price));
   renderEditPhotos();
   reviewSnapshot = reviewValues();
 
@@ -3370,10 +3370,10 @@ function openDetails(id) {
   document.querySelector('input[name="d-status"][value="' + status + '"]').checked = true;
   $("d-note-field").hidden = status === "visited";
   state.detailsPrice = item.price || 0;
-  $("d-price-help").textContent = item.google_place_id
+  $("d-price-help").textContent = item.google_place_id && item.price
     ? "Set automatically from Google Maps."
     : "Tap again to clear.";
-  buildShekels("d-price", "detailsPrice", !!item.google_place_id);
+  buildShekels("d-price", "detailsPrice", !!(item.google_place_id && item.price));
   $("d-error").hidden = true;
   showHoursPreview();
   detailsSnapshot = detailsValues();
