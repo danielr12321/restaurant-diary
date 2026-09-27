@@ -475,7 +475,12 @@ function absoluteLinks(page: Page, baseUrl: string): [string, string][] {
     if (!raw || /^(#|javascript:|mailto:|tel:|whatsapp:)/i.test(raw)) continue;
     let absolute: string;
     try {
-      absolute = new URL(raw, baseUrl).href.split("#")[0];
+      const full = new URL(raw, baseUrl).href;
+      const hashAt = full.indexOf("#");
+      // A hash-routed single-page app (#/sites/..., #!/menu) keeps its own path
+      // in the fragment — that's the actual page, not a same-page anchor like
+      // "#contact", so only the latter gets stripped.
+      absolute = hashAt < 0 || /^#[!/]/.test(full.slice(hashAt)) ? full : full.slice(0, hashAt);
     } catch {
       continue;
     }
