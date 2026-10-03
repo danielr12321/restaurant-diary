@@ -4108,7 +4108,9 @@ function updateCalendarLinks() {
   const end = new Date(start.getTime() + 2 * 3600 * 1000);
   const stamp = (d) => toLocalInput(d).replace(/[-:]/g, "") + "00"; // 20261010T200000
   const iso = (d) => toLocalInput(d) + ":00";
-  const title = "Dinner at " + item.name;
+  const hour = start.getHours();
+  const meal = hour < 10 ? "Breakfast" : hour < 12 ? "Brunch" : hour < 17 ? "Lunch" : hour < 22 ? "Dinner" : "Late-night bite";
+  const title = meal + " at " + item.name;
   const where = [item.address, item.city && !(item.address || "").includes(item.city) && item.city]
     .filter(Boolean).join(", ");
   const maps = mapsLink(item);
