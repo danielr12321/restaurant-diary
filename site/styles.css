@@ -1144,6 +1144,8 @@ select {
   animation: pop var(--t-slow) var(--ease) both;
 }
 .modal-sm { max-width: 480px; }
+.calendar-links { display: grid; gap: var(--space-2); margin-top: var(--space-4); }
+.calendar-links .btn { justify-content: center; text-decoration: none; }
 @keyframes pop { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
 /* Leaving is quicker than arriving. */
 .modal-backdrop.is-closing { animation: fade-out 180ms var(--ease) both; pointer-events: none; }

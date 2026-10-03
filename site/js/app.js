@@ -4069,8 +4069,79 @@ document.querySelectorAll('input[name="d-status"]').forEach((radio) => {
   radio.addEventListener("change", () => { $("d-note-field").hidden = detailsStatus() === "visited"; });
 });
 
+/* ---------- add to a calendar ----------
+   Plain links: each calendar's own "new event" address takes the details in the
+   query, and an .ics file covers Apple and everything else. Times are local, with
+   no zone, so the event lands at the hour that was typed wherever it's opened. */
+
+let calendarId = null;
+
+function openCalendar(id) {
+  const item = store.get(id);
+  if (!item) return;
+  calendarId = id;
+  $("calendar-for").innerHTML = "<strong>" + esc(item.name) + "</strong>";
+  const when = new Date();
+  when.setDate(when.getDate() + 1);
+  when.setHours(20, 0, 0, 0);
+  $("calendar-when").value = toLocalInput(when);
+  updateCalendarLinks();
+  openLayer("calendar-modal", closeCalendar);
+}
+
+function closeCalendar() {
+  closeLayer("calendar-modal");
+  calendarId = null;
+}
+
+const pad2 = (n) => String(n).padStart(2, "0");
+
+function toLocalInput(d) {
+  return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()) +
+    "T" + pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+}
+
+function updateCalendarLinks() {
+  const item = store.get(calendarId);
+  const start = new Date($("calendar-when").value);
+  if (!item || isNaN(start)) return;
+  const end = new Date(start.getTime() + 2 * 3600 * 1000);
+  const stamp = (d) => toLocalInput(d).replace(/[-:]/g, "") + "00"; // 20261010T200000
+  const iso = (d) => toLocalInput(d) + ":00";
+  const title = "Dinner at " + item.name;
+  const where = [item.address, item.city && !(item.address || "").includes(item.city) && item.city]
+    .filter(Boolean).join(", ");
+  const maps = mapsLink(item);
+  const notes = [maps && maps.url, item.phone && "Phone: " + item.phone].filter(Boolean).join("\n");
+  const q = (obj) => Object.entries(obj).map(([k, v]) => k + "=" + encodeURIComponent(v)).join("&");
+
+  $("cal-google").href = "https://calendar.google.com/calendar/render?" + q({
+    action: "TEMPLATE", text: title, dates: stamp(start) + "/" + stamp(end), details: notes, location: where });
+  const outlook = q({ path: "/calendar/action/compose", rru: "addevent", subject: title,
+    startdt: iso(start), enddt: iso(end), body: notes, location: where });
+  $("cal-outlook").href = "https://outlook.live.com/calendar/0/deeplink/compose?" + outlook;
+  $("cal-office").href = "https://outlook.office.com/calendar/0/deeplink/compose?" + outlook;
+
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Restaurant Diary//EN", "BEGIN:VEVENT",
+    "UID:" + item.id + "-" + stamp(start) + "@restaurant-diary", "DTSTAMP:" + stamp(new Date()),
+    "DTSTART:" + stamp(start), "DTEND:" + stamp(end), "SUMMARY:" + icsText(title),
+    "LOCATION:" + icsText(where), "DESCRIPTION:" + icsText(notes), "END:VEVENT", "END:VCALENDAR"];
+  const link = $("cal-ics");
+  if (link.href.startsWith("blob:")) URL.revokeObjectURL(link.href);
+  link.href = URL.createObjectURL(new Blob([ics.join("\r\n")], { type: "text/calendar" }));
+  link.download = item.name.replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "") + ".ics";
+}
+
+function icsText(s) {
+  return s.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/[,;]/g, "\\$&");
+}
+
+$("close-calendar").addEventListener("click", closeCalendar);
+$("calendar-when").addEventListener("input", updateCalendarLinks);
+
 function cardAction(action, id, trigger) {
-  if (action === "add") openAdd();
+  if (action === "calendar") openCalendar(id);
+  else if (action === "add") openAdd();
   else if (action === "visit" || action === "edit") openReview(id);
   else if (action === "delete") removeItem(id);
   else if (action === "menu") openMenu(id);
@@ -4084,7 +4155,7 @@ $("list").addEventListener("click", (event) => {
   const trigger = event.target.closest("[data-act]");
   if (!trigger) return;
   const action = trigger.dataset.act;
-  if (["add", "visit", "edit", "delete", "menu", "details", "send", "more", "actions"].includes(action)) {
+  if (["add", "visit", "edit", "delete", "menu", "details", "send", "calendar", "more", "actions"].includes(action)) {
     cardAction(action, trigger.dataset.id, trigger);
   } else if (action === "favorite") toggleFavorite(trigger.dataset.id);
   else if (action === "photo") openLightbox(trigger.dataset.id, Number(trigger.dataset.index));
@@ -4120,6 +4191,7 @@ function openCardMenu(id, trigger) {
   const maps = mapsLink(item);
   const menuLabel = item.menu && item.menu.url ? "See the menu" : item.website ? "Find the menu" : "Add a menu link";
   menu.innerHTML =
+    menuItem("calendar", id, "calendar", "Add to calendar") +
     menuItem("send", id, "send", "Send to a friend") +
     menuItem("details", id, "edit", "Edit details") +
     menuItem("menu", id, "book", menuLabel) +
